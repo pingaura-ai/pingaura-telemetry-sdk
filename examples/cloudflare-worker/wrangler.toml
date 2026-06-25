@@ -1,0 +1,15 @@
+name = "pingaura-edge-collector"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+# Bind to your zone route(s). The Worker runs before cache and its
+# fetch(request) subrequest passes THROUGH cache, so cf-cache-status is visible.
+# Scope the route to real pages; do not let it re-match its own subrequest.
+# [[routes]]
+# pattern = "example.com/*"
+# zone_name = "example.com"
+
+[vars]
+# REQUIRED: replace with the site domain registered in PingAura before deploying.
+PINGAURA_DOMAIN = "example.com"
+# PINGAURA_INGEST_KEY is a secret: `npx wrangler secret put PINGAURA_INGEST_KEY`
