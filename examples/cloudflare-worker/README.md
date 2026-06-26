@@ -4,7 +4,7 @@ A transparent, fail-open Cloudflare Worker that emits server-source `page_view`
 events (including cache hits) to the PingAura collector, capturing `cache_status`
 from `cf-cache-status`.
 
-This is a standalone example — copy it into your own project and adapt.
+This is a standalone example. Copy it into your own project and adapt.
 
 ## How it works
 
@@ -16,7 +16,7 @@ This is a standalone example — copy it into your own project and adapt.
 ## Deploy
 
 1. `npm install` (pulls `@pingaura/telemetry` and the latest `wrangler`).
-2. Set the secret: `npx wrangler secret put PINGAURA_INGEST_KEY` — an account
+2. Set the secret: `npx wrangler secret put PINGAURA_INGEST_KEY`, an account
    API key with the `write` scope; treat it as a secret.
 3. Replace `PINGAURA_DOMAIN = "example.com"` in `wrangler.toml` with the domain
    registered in PingAura.

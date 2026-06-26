@@ -25,7 +25,7 @@ export async function capturePageView(
   try {
     path = new URL(input.url).pathname;
   } catch {
-    // bare path (e.g. "/pricing") — rebuild an absolute URL from Host, else the collector rejects the batch
+    // bare path (e.g. "/pricing"); rebuild an absolute URL from Host, else the collector rejects the batch
     path = input.url.split('?')[0] ?? '/';
     const host = header(input.headers, 'host');
     if (host) {

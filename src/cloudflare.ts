@@ -1,7 +1,7 @@
 import { type ClientConfig, createClient } from './core';
 import { shouldTrackPath } from './matchers';
 
-// Structural Cloudflare types — no @cloudflare/workers-types runtime dependency.
+// Structural Cloudflare types; no @cloudflare/workers-types runtime dependency.
 interface CfRequestLike {
   url: string;
   headers: { get(name: string): string | null };
@@ -65,13 +65,13 @@ export function trackEdge(
     try {
       pathname = new URL(request.url).pathname;
     } catch {
-      return; // malformed url — skip
+      return; // malformed url, skip
     }
 
     const matcher = config.shouldTrack ?? shouldTrackPath;
     if (!matcher(pathname) || !isHtmlResponse(response)) return;
 
-    // Workers use ctx.waitUntil for fire-and-forget — keepalive off.
+    // Workers use ctx.waitUntil for fire-and-forget; keepalive off.
     const client = createClient({ ...config, keepalive: false });
     const cacheStatus = mapCacheStatus(response.headers.get('cf-cache-status'));
 

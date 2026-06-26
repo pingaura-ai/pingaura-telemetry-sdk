@@ -1,11 +1,15 @@
 # @pingaura/telemetry
 
+[![npm](https://img.shields.io/npm/v/@pingaura/telemetry.svg)](https://www.npmjs.com/package/@pingaura/telemetry)
+[![CI](https://github.com/pingaura-ai/pingaura-telemetry-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/pingaura-ai/pingaura-telemetry-sdk/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/@pingaura/telemetry.svg)](./LICENSE)
+
 First-party, privacy-respecting analytics SDK for server and edge runtimes. It
 sends page views and custom events to the PingAura collector from your own
-infrastructure — no client-side script, no third-party cookies.
+infrastructure, with no client-side script and no third-party cookies.
 
 - **Zero runtime dependencies.**
-- **Fire-and-forget** — tracking never blocks, alters, or fails a request.
+- **Fire-and-forget.** Tracking never blocks, alters, or fails a request.
 - **First-class entry points** for Next.js, Node/Express, and Cloudflare
   Workers, plus a generic client for any other JavaScript or TypeScript server.
 - **ESM and CommonJS**, with bundled TypeScript types.
@@ -28,7 +32,7 @@ Every entry point takes the same two required fields:
 | `writeKey` | Your ingest key, e.g. from `process.env.PINGAURA_INGEST_KEY`. |
 | `domain`   | The site domain registered in PingAura, e.g. `"example.com"`. |
 
-If either is missing or empty, the SDK becomes a no-op and warns once — it never
+If either is missing or empty, the SDK becomes a no-op and warns once; it never
 throws. Optional fields: `endpoint`, `timeoutMs`, `debug`, `keepalive`,
 `fetchImpl`, `onWarn`.
 
@@ -105,7 +109,7 @@ await client.track(
 
 ## Event properties and PII
 
-Custom `properties` are archived verbatim. **Never put PII in them** — no emails,
+Custom `properties` are archived verbatim. **Never put PII in them**: no emails,
 names, user IDs, or raw query strings. The collector rejects events whose values
 look like PII. Use opaque or aggregate values only.
 
@@ -116,7 +120,7 @@ pnpm install
 pnpm test        # vitest
 pnpm typecheck   # tsc --noEmit
 pnpm lint        # eslint
-pnpm build       # tsup → dist/
+pnpm build       # tsdown → dist/
 ```
 
 ## License

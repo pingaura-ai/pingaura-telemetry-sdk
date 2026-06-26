@@ -38,7 +38,7 @@ export interface BuildEventInput {
   context: EventContext;
   /**
    * Event metadata, archived verbatim. Never put PII here (emails, names, user
-   * IDs, raw query strings) — the collector rejects events whose values look
+   * IDs, raw query strings). The collector rejects events whose values look
    * like PII. Use opaque or aggregate values only.
    */
   properties?: Record<string, unknown>;

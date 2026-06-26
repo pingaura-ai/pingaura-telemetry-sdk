@@ -181,7 +181,7 @@ describe('createClient.send', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('warns only once for a repeated 4xx (never self-heals — no per-request spam)', async () => {
+  it('warns only once for a repeated 4xx (never self-heals, no per-request spam)', async () => {
     const warn = vi.fn();
     const client = createClient({
       writeKey: 'pa_k1_secret',

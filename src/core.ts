@@ -22,7 +22,7 @@ export interface ClientConfig {
 }
 
 export interface SendOptions {
-  /** Visitor IP — sent as the X-PA-Client-IP header, never in the body. */
+  /** Visitor IP, sent as the X-PA-Client-IP header, never in the body. */
   ip?: string;
 }
 
@@ -41,7 +41,7 @@ export interface AnalyticsClient {
   send(event: AnalyticsEvent, options?: SendOptions): Promise<void>;
   sendRaw(input: BuildEventInput, options?: SendOptions): Promise<void>;
   pageView(input: PageViewInput): Promise<void>;
-  /** `properties` is archived verbatim — never pass PII; opaque/aggregate values only. */
+  /** `properties` is archived verbatim; never pass PII. Opaque/aggregate values only. */
   track(
     name: string,
     properties: Record<string, unknown> | undefined,
@@ -64,7 +64,7 @@ async function drainAndCountRejected(res: Response): Promise<number> {
       return 0;
     }
   } catch {
-    // not JSON / already consumed — fall through to cancel
+    // not JSON / already consumed; fall through to cancel
   }
   await res.body?.cancel?.().catch(() => {});
   return 0;
@@ -75,12 +75,11 @@ export function createClient(config: ClientConfig): AnalyticsClient {
   const warn = config.onWarn ?? ((m: string) => console.warn(m));
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const endpoint = config.endpoint ?? DEFAULT_ENDPOINT;
-  // 4xx rejections never self-heal — warn once per status instead of per request.
+  // 4xx rejections never self-heal; warn once per status instead of per request.
   const warnedStatuses = new Set<number>();
 
-  if (!config.writeKey)
-    warn('[pingaura] writeKey missing — analytics disabled');
-  if (!config.domain) warn('[pingaura] domain missing — analytics disabled');
+  if (!config.writeKey) warn('[pingaura] writeKey missing; analytics disabled');
+  if (!config.domain) warn('[pingaura] domain missing; analytics disabled');
 
   async function send(
     event: AnalyticsEvent,
@@ -120,14 +119,14 @@ export function createClient(config: ClientConfig): AnalyticsClient {
         try {
           detail = ((await res.text?.()) ?? '').slice(0, 200);
         } catch {
-          // body unreadable — the status code alone is enough
+          // body unreadable; the status code alone is enough
         }
         const message = `[pingaura] ingest rejected (${res.status})${detail ? `: ${detail}` : ''}`;
         if (res.status === 429 || res.status >= 500) {
-          // transient (rate-limit / server) — debug-only, same as network failures
+          // transient (rate-limit / server); debug-only, same as network failures
           if (config.debug) warn(message);
         } else if (!warnedStatuses.has(res.status)) {
-          // deterministic client error (bad key/domain/payload) — warn once
+          // deterministic client error (bad key/domain/payload); warn once
           warnedStatuses.add(res.status);
           warn(message);
         }
@@ -139,7 +138,7 @@ export function createClient(config: ClientConfig): AnalyticsClient {
       if (rejected > 0)
         warn(`[pingaura] ${rejected} event(s) rejected by collector`);
     } catch (err) {
-      // network / abort / timeout — transient; quiet outside debug
+      // network / abort / timeout; transient, quiet outside debug
       if (config.debug) warn(`[pingaura] send failed: ${String(err)}`);
     } finally {
       clearTimeout(timer);
@@ -147,7 +146,7 @@ export function createClient(config: ClientConfig): AnalyticsClient {
   }
 
   // Build inside the guard so a synchronous throw (crypto.randomUUID) never
-  // escapes into the caller's request path — every adapter is fire-and-forget.
+  // escapes into the caller's request path; every adapter is fire-and-forget.
   function safeSend(
     input: BuildEventInput,
     options?: SendOptions,

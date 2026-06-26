@@ -3,7 +3,7 @@ import { shouldTrackPath } from './matchers';
 
 export { shouldTrackPath } from './matchers';
 
-// Minimal structural types — avoids a hard runtime dependency on `next`.
+// Minimal structural types; avoids a hard runtime dependency on `next`.
 interface NextRequestLike {
   url: string;
   nextUrl: { pathname: string; href: string };
@@ -46,7 +46,7 @@ export interface MiddlewareConfig extends ClientConfig {
 export function createAnalyticsMiddleware(
   config: MiddlewareConfig,
 ): (req: NextRequestLike, event: FetchEventLike) => void {
-  // dispatch rides event.waitUntil — keepalive off, like the Cloudflare adapter
+  // dispatch rides event.waitUntil; keepalive off, like the Cloudflare adapter
   const client: AnalyticsClient = createClient({ ...config, keepalive: false });
   const matcher = config.shouldTrack ?? shouldTrackPath;
 
