@@ -107,6 +107,97 @@ await client.track(
 );
 ```
 
+## Install with an AI agent
+
+Prefer to let an AI coding agent (Claude Code, Cursor, Copilot, and similar) do
+the wiring? Open your app in the agent and paste the prompt for your stack.
+Replace `example.com` with your registered PingAura domain.
+
+### Next.js
+
+```text
+Install and wire up the `@pingaura/telemetry` analytics SDK in this Next.js app.
+
+Facts (use these, do not guess the API):
+- npm package `@pingaura/telemetry`, entry point `@pingaura/telemetry/next`.
+- Requires Node 24+ or a runtime with global `fetch`. Zero runtime dependencies.
+- Fire-and-forget: missing config no-ops and warns once, never throws or blocks.
+
+Do:
+1. Install `@pingaura/telemetry` with the project's package manager (detect from the lockfile).
+2. Create or edit `middleware.ts` at the project root. Build the tracker once at module scope with
+   createAnalyticsMiddleware({ writeKey: process.env.PINGAURA_INGEST_KEY, domain: 'example.com' })
+   and call it before returning NextResponse.next(). Preserve any existing middleware logic.
+3. Add PINGAURA_INGEST_KEY to .env.example and .env.local (no real secret committed); note that the
+   key comes from the PingAura dashboard.
+4. Never put PII (emails, names, user IDs, raw query strings) in event properties.
+5. Run typecheck/build, fix integration errors, then summarize files changed and env vars to set.
+```
+
+### Node / Express
+
+```text
+Install and wire up the `@pingaura/telemetry` analytics SDK in this Node/Express app.
+
+Facts (use these, do not guess the API):
+- npm package `@pingaura/telemetry`, entry point `@pingaura/telemetry/node`.
+- Requires Node 24+ or a runtime with global `fetch`. Zero runtime dependencies.
+- Fire-and-forget: missing config no-ops and warns once, never throws, always calls next().
+
+Do:
+1. Install `@pingaura/telemetry` with the project's package manager (detect from the lockfile).
+2. Register the middleware early in the chain, before routes:
+   app.use(analyticsMiddleware({ writeKey: process.env.PINGAURA_INGEST_KEY, domain: 'example.com' }))
+   importing analyticsMiddleware from `@pingaura/telemetry/node`.
+3. Add PINGAURA_INGEST_KEY to .env.example and .env (no real secret committed); note that the key
+   comes from the PingAura dashboard.
+4. Never put PII (emails, names, user IDs, raw query strings) in event properties.
+5. Run typecheck/build, fix integration errors, then summarize files changed and env vars to set.
+```
+
+### Cloudflare Workers
+
+```text
+Install and wire up the `@pingaura/telemetry` analytics SDK in this Cloudflare Worker.
+
+Facts (use these, do not guess the API):
+- npm package `@pingaura/telemetry`, entry point `@pingaura/telemetry/cloudflare`.
+- Reads only headers, never consumes the body, never throws. Dispatches via ctx.waitUntil.
+
+Do:
+1. Install `@pingaura/telemetry` with the project's package manager (detect from the lockfile).
+2. In the fetch handler, after `const res = await fetch(request)`, call
+   trackEdge(request, res, ctx, { writeKey: env.PINGAURA_INGEST_KEY, domain: env.PINGAURA_DOMAIN })
+   and return res unchanged, importing trackEdge from `@pingaura/telemetry/cloudflare`.
+3. Add PINGAURA_DOMAIN to [vars] in wrangler.toml, and set the ingest key as a secret with
+   `npx wrangler secret put PINGAURA_INGEST_KEY` (do not hardcode it). Bump compatibility_date to a
+   current date if needed.
+4. Never put PII (emails, names, user IDs, raw query strings) in event properties.
+5. Run typecheck/build, fix integration errors, then summarize files changed and the var/secret to set.
+```
+
+### Any other JS/TS server
+
+```text
+Install and wire up the `@pingaura/telemetry` analytics SDK in this server.
+
+Facts (use these, do not guess the API):
+- npm package `@pingaura/telemetry`, generic client export `createClient`.
+- Requires Node 24+ or a runtime with global `fetch`. Zero runtime dependencies.
+- Fire-and-forget: missing config no-ops and warns once, never throws.
+
+Do:
+1. Install `@pingaura/telemetry` with the project's package manager (detect from the lockfile).
+2. Create one client at startup:
+   const analytics = createClient({ writeKey: process.env.PINGAURA_INGEST_KEY, domain: 'example.com' })
+   Call analytics.pageView({ url, path }) in the request handler, and
+   analytics.track(name, properties, { url }) for custom events.
+3. Add PINGAURA_INGEST_KEY to .env.example and the local env (no real secret committed); note that the
+   key comes from the PingAura dashboard.
+4. Never put PII (emails, names, user IDs, raw query strings) in event properties.
+5. Run typecheck/build, fix integration errors, then summarize files changed and env vars to set.
+```
+
 ## Event properties and PII
 
 Custom `properties` are archived verbatim. **Never put PII in them**: no emails,
