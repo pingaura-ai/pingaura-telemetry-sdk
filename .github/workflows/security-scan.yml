@@ -1,0 +1,63 @@
+name: Security Scan
+
+# Recurring vulnerability / IaC-misconfig / secret scan (Trivy) for SOC 2 +
+# ISO 27001 evidence — Sprinto SDC 55 ("regular vulnerability scans").
+# Report-only: never blocks deploys. The run history + uploaded reports are
+# the compliance evidence. Also runnable on demand from the Actions tab.
+#
+# Cadence: twice a month — 1st & 15th (~every two weeks; cron can't express a
+# true 14-day cycle). For weekly instead use '0 6 * * 1'; for monthly '0 6 1 * *'.
+
+on:
+  schedule:
+    - cron: '0 6 1,15 * *' # 1st & 15th, 06:00 UTC (11:30 IST)
+  workflow_dispatch: {} # manual / on-demand
+
+permissions:
+  contents: read
+
+jobs:
+  trivy:
+    name: 🛡️ Trivy
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Trivy
+        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      # Single scan → JSON. Deps come from pnpm-lock.yaml (no install needed),
+      # misconfig from the Terraform/Dockerfiles, secrets from the whole tree.
+      - name: Scan repo (deps, IaC, secrets)
+        run: |
+          trivy fs . \
+            --scanners vuln,misconfig,secret \
+            --severity CRITICAL,HIGH,MEDIUM \
+            --exit-code 0 \
+            --no-progress \
+            --format json \
+            --output trivy-report.json
+
+      # Convert (no re-scan) to a human-readable table for the run summary.
+      - name: Render report
+        run: trivy convert --format table --output trivy-report.txt trivy-report.json
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### 🛡️ Trivy security scan'
+            echo '```'
+            cat trivy-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: trivy-report
+          path: |
+            trivy-report.txt
+            trivy-report.json
+          retention-days: 90
