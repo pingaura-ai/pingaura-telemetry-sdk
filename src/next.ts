@@ -1,5 +1,6 @@
 import { type AnalyticsClient, type ClientConfig, createClient } from './core';
 import { shouldTrackPath } from './matchers';
+import { applyOrigin, domainOrigin } from './origin';
 
 export { shouldTrackPath } from './matchers';
 
@@ -21,11 +22,19 @@ export interface RequestData {
   ip?: string;
 }
 
-export function extractRequestData(req: NextRequestLike): RequestData {
+export function extractRequestData(
+  req: NextRequestLike,
+  domain?: string,
+): RequestData {
   const xff = req.headers.get('x-forwarded-for') ?? '';
   const ip = xff.split(',')[0]?.trim() || undefined;
+  // req.nextUrl.href carries the correct path/query but, behind a proxy, the
+  // bind-address host (0.0.0.0:3000). Rebuild the origin from the registered
+  // domain when we have one; otherwise keep the request url (correct in dev).
+  const requestUrl = req.nextUrl.href || req.url;
+  const origin = domainOrigin(domain);
   return {
-    url: req.nextUrl.href || req.url,
+    url: origin ? applyOrigin(requestUrl, origin) : requestUrl,
     path: req.nextUrl.pathname,
     referrer: req.headers.get('referer') ?? undefined,
     userAgent: req.headers.get('user-agent') ?? undefined,
@@ -53,7 +62,7 @@ export function createAnalyticsMiddleware(
   return (req, event) => {
     try {
       if (!matcher(req.nextUrl.pathname)) return;
-      const data = extractRequestData(req);
+      const data = extractRequestData(req, config.domain);
       event.waitUntil(client.pageView(data));
     } catch {
       // never block the request

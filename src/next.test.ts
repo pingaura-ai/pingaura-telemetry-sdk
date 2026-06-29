@@ -35,6 +35,28 @@ describe('extractRequestData', () => {
     expect(data.userAgent).toBe('Mozilla/5.0');
     expect(data.ip).toBe('203.0.113.7');
   });
+
+  it('rebuilds the bind-address host from the registered domain, keeping path+query', () => {
+    const req = {
+      url: 'https://0.0.0.0:3000/pricing?ref=x',
+      nextUrl: { pathname: '/pricing', href: 'https://0.0.0.0:3000/pricing?ref=x' },
+      headers: new Headers({ referer: 'https://www.example.com/' }),
+    };
+    const data = extractRequestData(req as never, 'example.com');
+    expect(data.url).toBe('https://example.com/pricing?ref=x');
+    expect(data.path).toBe('/pricing');
+  });
+
+  it('keeps the request url when no domain is provided (dev)', () => {
+    const req = {
+      url: 'https://localhost:3000/blog/a',
+      nextUrl: { pathname: '/blog/a', href: 'https://localhost:3000/blog/a' },
+      headers: new Headers(),
+    };
+    expect(extractRequestData(req as never).url).toBe(
+      'https://localhost:3000/blog/a',
+    );
+  });
 });
 
 describe('createAnalyticsMiddleware', () => {

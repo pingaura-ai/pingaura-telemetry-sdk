@@ -1,6 +1,6 @@
 {
   "name": "@pingaura/telemetry",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "First-party analytics SDK for Next.js, Node/Express, and Cloudflare Workers.",
   "license": "Apache-2.0",
   "author": "PingAura AI",
