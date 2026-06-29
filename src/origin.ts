@@ -13,11 +13,12 @@
  * copy-paste mistake) rather than building a corrupt origin from it.
  */
 export function domainOrigin(domain: string | undefined): string | undefined {
-  const host = domain
-    ?.trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '') // accidental scheme
-    .replace(/\/.*$/, ''); // accidental path
+  let host = domain?.trim().toLowerCase();
+  if (!host) return undefined;
+  const scheme = host.indexOf('://'); // accidental scheme
+  if (scheme !== -1) host = host.slice(scheme + 3);
+  const slash = host.indexOf('/'); // accidental path
+  if (slash !== -1) host = host.slice(0, slash);
   if (!host) return undefined;
   try {
     return new URL(`https://${host}`).origin;
