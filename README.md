@@ -36,6 +36,19 @@ If either is missing or empty, the SDK becomes a no-op and warns once; it never
 throws. Optional fields: `endpoint`, `timeoutMs`, `debug`, `keepalive`,
 `fetchImpl`, `onWarn`.
 
+The server adapters (`/next`, `/node`) rebuild each tracked URL's origin from
+`domain`, keeping the request's path and query. Behind a proxy the request host
+the server sees is its own bind address (`0.0.0.0:3000`), not the host the
+browser used; rebuilding from the registered domain keeps tracked URLs and
+same-site/visit attribution correct.
+In local dev (no `domain`) the request URL is used as-is.
+
+The rebuilt origin is `https://<domain>`, so server-side page views are
+attributed to the registered domain even when served from a subdomain (each SDK
+instance is configured for one registered site). If you call the lower-level
+`capturePageView` directly (instead of the Express middleware), pass `domain`
+yourself to get the same rewrite.
+
 ## Usage
 
 ### Next.js middleware

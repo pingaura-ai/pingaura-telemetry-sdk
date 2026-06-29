@@ -1,5 +1,6 @@
 import { type AnalyticsClient, type ClientConfig, createClient } from './core';
 import { shouldTrackPath } from './matchers';
+import { applyOrigin, domainOrigin } from './origin';
 
 type HeaderBag = Record<string, string | string[] | undefined>;
 
@@ -11,6 +12,12 @@ function header(headers: HeaderBag, name: string): string | undefined {
 export interface CaptureInput {
   headers: HeaderBag;
   url: string;
+  /**
+   * Registered site domain (e.g. "example.com"). Behind a proxy the request
+   * host is the bind address, not the public host, so the URL origin is rebuilt
+   * from this when provided. See `domainOrigin`.
+   */
+  domain?: string;
 }
 
 /** Framework-agnostic page_view capture from a request-like object. */
@@ -20,18 +27,23 @@ export async function capturePageView(
 ): Promise<void> {
   const xff = header(input.headers, 'x-forwarded-for') ?? '';
   const ip = xff.split(',')[0]?.trim() || undefined;
+  const origin = domainOrigin(input.domain);
   let url = input.url;
   let path: string;
   try {
     path = new URL(input.url).pathname;
+    // absolute url, but the host may be the bind address, so prefer the origin
+    if (origin) url = applyOrigin(input.url, origin);
   } catch {
-    // bare path (e.g. "/pricing"); rebuild an absolute URL from Host, else the collector rejects the batch
+    // bare path (e.g. "/pricing"); rebuild an absolute URL, else the collector rejects the batch
     path = input.url.split('?')[0] ?? '/';
     const host = header(input.headers, 'host');
-    if (host) {
-      const proto = header(input.headers, 'x-forwarded-proto') ?? 'https';
-      url = `${proto}://${host}${input.url}`;
-    }
+    const base =
+      origin ??
+      (host
+        ? `${header(input.headers, 'x-forwarded-proto') ?? 'https'}://${host}`
+        : undefined);
+    if (base) url = `${base}${input.url}`;
   }
   await client.pageView({
     url,
@@ -68,11 +80,13 @@ export function analyticsMiddleware(
         const host = req.get('host') ?? 'localhost';
         const url = `${req.protocol}://${host}${req.originalUrl}`;
         // catch the build/send rejection so a voided promise never becomes a fatal unhandled rejection
-        void capturePageView(client, { headers: req.headers, url }).catch(
-          () => {
-            // never block the request
-          },
-        );
+        void capturePageView(client, {
+          headers: req.headers,
+          url,
+          domain: config.domain,
+        }).catch(() => {
+          // never block the request
+        });
       }
     } catch {
       // never block the request

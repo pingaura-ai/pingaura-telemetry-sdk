@@ -55,6 +55,73 @@ describe('capturePageView', () => {
     expect(body.events[0]!.context.url).toBe('https://site.com/pricing?ref=x');
     expect(body.events[0]!.context.path).toBe('/pricing');
   });
+
+  it('rebuilds a bare path from the registered domain, overriding the Host header', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
+    const client = createClient({
+      writeKey: 'pa_k_s',
+      endpoint: 'https://in.test/v1/events',
+      domain: 'example.com',
+      fetchImpl: fetchImpl as never,
+    });
+    await capturePageView(client, {
+      headers: { host: '0.0.0.0:3000' },
+      url: '/pricing?ref=x',
+      domain: 'example.com',
+    });
+    const callArgs = (
+      fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    )[1];
+    const body = JSON.parse(String(callArgs.body)) as {
+      events: { context: Record<string, unknown> }[];
+    };
+    expect(body.events[0]!.context.url).toBe('https://example.com/pricing?ref=x');
+    expect(body.events[0]!.context.path).toBe('/pricing');
+  });
+
+  it('leaves an absolute url untouched when no domain is given (dev)', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
+    const client = createClient({
+      writeKey: 'pa_k_s',
+      endpoint: 'https://in.test/v1/events',
+      domain: 'example.com',
+      fetchImpl: fetchImpl as never,
+    });
+    await capturePageView(client, {
+      headers: {},
+      url: 'http://localhost:3000/blog',
+    });
+    const callArgs = (
+      fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    )[1];
+    const body = JSON.parse(String(callArgs.body)) as {
+      events: { context: Record<string, unknown> }[];
+    };
+    expect(body.events[0]!.context.url).toBe('http://localhost:3000/blog');
+  });
+
+  it('rebuilds a bind-address host from the registered domain', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
+    const client = createClient({
+      writeKey: 'pa_k_s',
+      endpoint: 'https://in.test/v1/events',
+      domain: 'example.com',
+      fetchImpl: fetchImpl as never,
+    });
+    await capturePageView(client, {
+      headers: { referer: 'https://www.example.com/' },
+      url: 'https://0.0.0.0:3000/pricing?ref=x',
+      domain: 'example.com',
+    });
+    const callArgs = (
+      fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    )[1];
+    const body = JSON.parse(String(callArgs.body)) as {
+      events: { context: Record<string, unknown> }[];
+    };
+    expect(body.events[0]!.context.url).toBe('https://example.com/pricing?ref=x');
+    expect(body.events[0]!.context.path).toBe('/pricing');
+  });
 });
 
 describe('analyticsMiddleware', () => {
