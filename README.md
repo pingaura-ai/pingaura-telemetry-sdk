@@ -51,23 +51,44 @@ yourself to get the same rewrite.
 
 ## Usage
 
-### Next.js middleware
+### Next.js (App Router)
+
+Tracking is server-side and status-accurate: a page_view fires only when a real
+page renders, so scanner 404 probes (which render `not-found`) are never counted.
+Two pieces: a header-only middleware, and a `<TrackPageView/>` component in the
+pages you want tracked.
 
 ```ts
 // middleware.ts
-import { createAnalyticsMiddleware } from '@pingaura/telemetry/next';
-import { NextResponse } from 'next/server';
+import { pingauraMiddleware } from '@pingaura/telemetry/next';
 
-const track = createAnalyticsMiddleware({
-  writeKey: process.env.PINGAURA_INGEST_KEY,
-  domain: 'example.com',
-});
+// Records the request path for <TrackPageView/>; tracks nothing itself.
+export const middleware = pingauraMiddleware();
 
-export function middleware(req, event) {
-  track(req, event);
-  return NextResponse.next();
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)'],
+};
+```
+
+```tsx
+// app/pricing/page.tsx (add to each page you track, NOT the root layout,
+// which also wraps not-found and would re-count 404s)
+import { TrackPageView } from '@pingaura/telemetry/next';
+
+export default function Page() {
+  return (
+    <>
+      <TrackPageView domain="example.com" />
+      {/* ...page content... */}
+    </>
+  );
 }
 ```
+
+`<TrackPageView/>` reads request headers, which renders the tracked page
+dynamically. Server-side rendering is what lets us count non-JS AI crawlers.
+Sites that must stay fully static should track at the edge (see the Cloudflare
+adapter) instead.
 
 ### Node / Express
 
@@ -138,13 +159,19 @@ Facts (use these, do not guess the API):
 
 Do:
 1. Install `@pingaura/telemetry` with the project's package manager (detect from the lockfile).
-2. Create or edit `middleware.ts` at the project root. Build the tracker once at module scope with
-   createAnalyticsMiddleware({ writeKey: process.env.PINGAURA_INGEST_KEY, domain: 'example.com' })
-   and call it before returning NextResponse.next(). Preserve any existing middleware logic.
-3. Add PINGAURA_INGEST_KEY to .env.example and .env.local (no real secret committed); note that the
+2. Create or edit `middleware.ts` at the project root: `export const middleware = pingauraMiddleware()`
+   importing pingauraMiddleware from `@pingaura/telemetry/next`, plus a matcher config that skips
+   `_next`, static assets, and `api`. If a middleware already exists, compose with
+   pingauraRequestHeaders(req): return NextResponse.next({ request: { headers: pingauraRequestHeaders(req) } }).
+   Preserve any existing middleware logic.
+3. Add `<TrackPageView domain="example.com" />` (from `@pingaura/telemetry/next`) inside each page you
+   want tracked, never in the root layout (it also wraps not-found, which would re-count 404s). For a
+   shared route group, a `template.tsx` rendering it once covers every page in the group.
+4. Add PINGAURA_INGEST_KEY to .env.example and .env.local (no real secret committed); note that the
    key comes from the PingAura dashboard.
-4. Never put PII (emails, names, user IDs, raw query strings) in event properties.
-5. Run typecheck/build, fix integration errors, then summarize files changed and env vars to set.
+5. Never put PII (emails, names, user IDs, raw query strings) in event properties.
+6. Note that tracked pages render dynamically (server-side). Run typecheck/build, fix integration
+   errors, then summarize files changed and env vars to set.
 ```
 
 ### Node / Express

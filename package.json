@@ -1,6 +1,6 @@
 {
   "name": "@pingaura/telemetry",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "First-party analytics SDK for Next.js, Node/Express, and Cloudflare Workers.",
   "license": "Apache-2.0",
   "author": "PingAura AI",
@@ -69,7 +69,15 @@
     "./package.json": "./package.json"
   },
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=20.0.0"
+  },
+  "peerDependencies": {
+    "next": ">=15.1.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
   },
   "files": [
     "dist"
@@ -90,6 +98,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.0.1",
     "eslint": "^10.5.0",
+    "next": "^16.2.10",
     "prettier": "^3.8.4",
     "tsdown": "^0.22.3",
     "typescript": "^6.0.3",
