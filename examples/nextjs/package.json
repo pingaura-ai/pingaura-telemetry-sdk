@@ -1,0 +1,23 @@
+{
+  "name": "pingaura-telemetry-nextjs-example",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Example app for the @pingaura/telemetry Next.js integration.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@pingaura/telemetry": "link:../..",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
+  }
+}

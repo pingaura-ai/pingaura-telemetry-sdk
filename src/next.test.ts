@@ -1,136 +1,105 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 import {
-  shouldTrackPath,
-  extractRequestData,
-  createAnalyticsMiddleware,
+  buildPageViewFromHeaders,
+  pingauraRequestHeaders,
+  TrackPageView,
+  PINGAURA_PATH_HEADER,
 } from './next';
 
-describe('shouldTrackPath (default matcher)', () => {
-  it('skips _next, api, and static assets; tracks real pages', () => {
-    expect(shouldTrackPath('/blog/a')).toBe(true);
-    expect(shouldTrackPath('/')).toBe(true);
-    expect(shouldTrackPath('/_next/static/chunk.js')).toBe(false);
-    expect(shouldTrackPath('/api/health')).toBe(false);
-    expect(shouldTrackPath('/favicon.ico')).toBe(false);
-    expect(shouldTrackPath('/images/logo.png')).toBe(false);
-  });
-});
-
-describe('extractRequestData', () => {
-  it('pulls url, path, referrer, user-agent, and first-hop ip from a request-like object', () => {
+describe('pingauraRequestHeaders', () => {
+  it('records pathname + search on the request headers for TrackPageView to read', () => {
     const req = {
-      url: 'https://site.com/blog/a?ref=x',
-      nextUrl: { pathname: '/blog/a', href: 'https://site.com/blog/a?ref=x' },
-      headers: new Headers({
-        referer: 'https://chatgpt.com/',
-        'user-agent': 'Mozilla/5.0',
-        'x-forwarded-for': '203.0.113.7, 10.0.0.1',
-      }),
+      nextUrl: { pathname: '/blog/a', search: '?ref=x' },
+      headers: new Headers({ 'user-agent': 'UA' }),
     };
-    const data = extractRequestData(req as never);
-    expect(data.path).toBe('/blog/a');
-    expect(data.url).toBe('https://site.com/blog/a?ref=x');
-    expect(data.referrer).toBe('https://chatgpt.com/');
-    expect(data.userAgent).toBe('Mozilla/5.0');
-    expect(data.ip).toBe('203.0.113.7');
+    const headers = pingauraRequestHeaders(req as never);
+    expect(headers.get(PINGAURA_PATH_HEADER)).toBe('/blog/a?ref=x');
+    // preserves existing headers
+    expect(headers.get('user-agent')).toBe('UA');
   });
 
-  it('rebuilds the bind-address host from the registered domain, keeping path+query', () => {
+  it('records just the pathname when there is no query string', () => {
     const req = {
-      url: 'https://0.0.0.0:3000/pricing?ref=x',
-      nextUrl: { pathname: '/pricing', href: 'https://0.0.0.0:3000/pricing?ref=x' },
-      headers: new Headers({ referer: 'https://www.example.com/' }),
-    };
-    const data = extractRequestData(req as never, 'example.com');
-    expect(data.url).toBe('https://example.com/pricing?ref=x');
-    expect(data.path).toBe('/pricing');
-  });
-
-  it('keeps the request url when no domain is provided (dev)', () => {
-    const req = {
-      url: 'https://localhost:3000/blog/a',
-      nextUrl: { pathname: '/blog/a', href: 'https://localhost:3000/blog/a' },
+      nextUrl: { pathname: '/pricing', search: '' },
       headers: new Headers(),
     };
-    expect(extractRequestData(req as never).url).toBe(
-      'https://localhost:3000/blog/a',
+    expect(pingauraRequestHeaders(req as never).get(PINGAURA_PATH_HEADER)).toBe(
+      '/pricing',
+    );
+  });
+
+  it('overwrites a client-supplied x-pa-path (spoofing defense)', () => {
+    const req = {
+      nextUrl: { pathname: '/pricing', search: '' },
+      headers: new Headers({ [PINGAURA_PATH_HEADER]: '/admin/secret' }),
+    };
+    expect(pingauraRequestHeaders(req as never).get(PINGAURA_PATH_HEADER)).toBe(
+      '/pricing',
     );
   });
 });
 
-describe('createAnalyticsMiddleware', () => {
-  it('calls waitUntil with a pageView for a tracked path and skips assets', async () => {
-    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
-    const track = createAnalyticsMiddleware({
-      writeKey: 'pa_k_s',
-      endpoint: 'https://in.test/v1/events',
-      domain: 'example.com',
-      fetchImpl: fetchImpl as never,
-    });
+describe('buildPageViewFromHeaders', () => {
+  const mk = (init: Record<string, string>) => new Headers(init);
 
-    const promises: Promise<unknown>[] = [];
-    const event = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
-    const mkReq = (pathname: string) => ({
-      url: `https://site.com${pathname}`,
-      nextUrl: { pathname, href: `https://site.com${pathname}` },
-      headers: new Headers({ 'user-agent': 'UA' }),
-    });
-
-    track(mkReq('/_next/static/x.js') as never, event as never);
-    expect(promises).toHaveLength(0);
-
-    track(mkReq('/blog/a') as never, event as never);
-    expect(promises).toHaveLength(1);
-    await Promise.all(promises);
-    expect(fetchImpl).toHaveBeenCalledOnce();
-  });
-
-  it('never throws into the middleware when event construction fails', () => {
-    // buildEvent runs crypto.randomUUID synchronously; if it throws, the
-    // fire-and-forget tracker must swallow it, not fail the user's request.
-    vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => {
-      throw new Error('crypto unavailable');
-    });
-    try {
-      const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
-      const track = createAnalyticsMiddleware({
-        writeKey: 'pa_k_s',
+  it('returns null when the path header is absent (middleware not installed)', () => {
+    expect(
+      buildPageViewFromHeaders(mk({ 'user-agent': 'UA' }), {
         domain: 'example.com',
-        fetchImpl: fetchImpl as never,
-      });
-      const event = { waitUntil: vi.fn() };
-      const req = {
-        url: 'https://site.com/blog/a',
-        nextUrl: { pathname: '/blog/a', href: 'https://site.com/blog/a' },
-        headers: new Headers(),
-      };
-      expect(() => track(req as never, event as never)).not.toThrow();
-    } finally {
-      vi.restoreAllMocks();
-    }
+      }),
+    ).toBeNull();
   });
 
-  it('disables keepalive (dispatch rides waitUntil, not the request socket)', async () => {
-    const fetchImpl = vi.fn(
-      async (_url: string, _init: RequestInit) =>
-        new Response('{}', { status: 202 }),
-    );
-    const track = createAnalyticsMiddleware({
-      writeKey: 'pa_k_s',
-      domain: 'example.com',
-      fetchImpl: fetchImpl as never,
+  it('returns null when the path header is not a relative path (spoofed)', () => {
+    expect(
+      buildPageViewFromHeaders(
+        mk({ [PINGAURA_PATH_HEADER]: 'https://evil.com/x' }),
+        { domain: 'example.com' },
+      ),
+    ).toBeNull();
+  });
+
+  it('rebuilds an absolute url from the registered domain + recorded path', () => {
+    const h = mk({
+      [PINGAURA_PATH_HEADER]: '/pricing?ref=x',
+      referer: 'https://chatgpt.com/',
+      'user-agent': 'Mozilla/5.0',
+      'x-forwarded-for': '203.0.113.7, 10.0.0.1',
     });
-    const promises: Promise<unknown>[] = [];
-    const event = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
-    const req = {
-      url: 'https://site.com/blog/a',
-      nextUrl: { pathname: '/blog/a', href: 'https://site.com/blog/a' },
-      headers: new Headers({ 'user-agent': 'UA' }),
-    };
-    track(req as never, event as never);
-    await Promise.all(promises);
-    expect(fetchImpl).toHaveBeenCalledOnce();
-    expect(fetchImpl.mock.calls[0]![1].keepalive).toBe(false);
+    const data = buildPageViewFromHeaders(h, { domain: 'example.com' });
+    expect(data).not.toBeNull();
+    expect(data!.url).toBe('https://example.com/pricing?ref=x');
+    expect(data!.path).toBe('/pricing');
+    expect(data!.referrer).toBe('https://chatgpt.com/');
+    expect(data!.userAgent).toBe('Mozilla/5.0');
+    expect(data!.ip).toBe('203.0.113.7');
+  });
+
+  it('falls back to the host header when no domain is registered (dev)', () => {
+    const h = mk({
+      [PINGAURA_PATH_HEADER]: '/blog/a',
+      host: 'localhost:3000',
+      'x-forwarded-proto': 'http',
+    });
+    const data = buildPageViewFromHeaders(h, {});
+    expect(data!.url).toBe('http://localhost:3000/blog/a');
+    expect(data!.path).toBe('/blog/a');
+  });
+});
+
+describe('TrackPageView', () => {
+  it('returns null (disabled) when no writeKey is configured, without reading headers', async () => {
+    await expect(TrackPageView({ domain: 'example.com' })).resolves.toBeNull();
+  });
+
+  it('lets the headers() dynamic-rendering bailout propagate (not swallowed)', async () => {
+    // Called outside a request scope, headers() throws: the same control-flow
+    // signal Next uses to opt a route into dynamic rendering. TrackPageView must
+    // NOT swallow it (swallowing would freeze the page static and disable
+    // tracking); it must propagate.
+    await expect(
+      TrackPageView({ writeKey: 'pa_k_s', domain: 'example.com' }),
+    ).rejects.toThrow(/outside a request scope/);
   });
 });

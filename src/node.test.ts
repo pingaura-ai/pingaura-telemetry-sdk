@@ -125,7 +125,27 @@ describe('capturePageView', () => {
 });
 
 describe('analyticsMiddleware', () => {
-  it('tracks a real page and calls next() exactly once', async () => {
+  // Minimal ServerResponse stand-in: records the 'finish' listener so the test
+  // can fire it with a chosen status code.
+  const mockRes = (statusCode: number) => {
+    let onFinish: (() => void) | undefined;
+    return {
+      statusCode,
+      on: (event: string, cb: () => void) => {
+        if (event === 'finish') onFinish = cb;
+      },
+      finish: () => onFinish?.(),
+    };
+  };
+
+  const mkReq = (originalUrl: string) => ({
+    originalUrl,
+    protocol: 'https',
+    get: () => 'site.com',
+    headers: { 'user-agent': 'UA' },
+  });
+
+  it('tracks a real page (2xx) and calls next() exactly once', async () => {
     const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
     const mw = analyticsMiddleware({
       writeKey: 'pa_k_s',
@@ -134,19 +154,34 @@ describe('analyticsMiddleware', () => {
       fetchImpl: fetchImpl as never,
     });
     const next = vi.fn();
-    mw(
-      {
-        originalUrl: '/blog/a',
-        protocol: 'https',
-        get: () => 'site.com',
-        headers: { 'user-agent': 'UA' },
-      } as never,
-      {} as never,
-      next,
-    );
+    const res = mockRes(200);
+    mw(mkReq('/blog/a') as never, res as never, next);
+
     expect(next).toHaveBeenCalledOnce();
+    // nothing fires until the response finishes
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    res.finish();
     await new Promise((r) => setTimeout(r, 0));
     expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it('does NOT track a non-2xx response (e.g. a scanner 404 probe)', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
+    const mw = analyticsMiddleware({
+      writeKey: 'pa_k_s',
+      endpoint: 'https://in.test/v1/events',
+      domain: 'example.com',
+      fetchImpl: fetchImpl as never,
+    });
+    const next = vi.fn();
+    const res = mockRes(404);
+    mw(mkReq('/wp-login.php') as never, res as never, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    res.finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('skips static assets but still calls next()', async () => {
@@ -158,6 +193,7 @@ describe('analyticsMiddleware', () => {
       fetchImpl: fetchImpl as never,
     });
     const next = vi.fn();
+    const res = mockRes(200);
     mw(
       {
         originalUrl: '/logo.png',
@@ -165,10 +201,11 @@ describe('analyticsMiddleware', () => {
         get: () => 'site.com',
         headers: {},
       } as never,
-      {} as never,
+      res as never,
       next,
     );
     expect(next).toHaveBeenCalledOnce();
+    res.finish();
     await new Promise((r) => setTimeout(r, 0));
     expect(fetchImpl).not.toHaveBeenCalled();
   });

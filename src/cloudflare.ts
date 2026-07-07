@@ -1,5 +1,8 @@
 import { type ClientConfig, createClient } from './core';
-import { shouldTrackPath } from './matchers';
+import { isTrackableStatus, shouldTrackPath } from './matchers';
+
+// Re-exported for back-compat; the shared definition lives in ./matchers.
+export { isTrackableStatus } from './matchers';
 
 // Structural Cloudflare types; no @cloudflare/workers-types runtime dependency.
 interface CfRequestLike {
@@ -7,6 +10,7 @@ interface CfRequestLike {
   headers: { get(name: string): string | null };
 }
 interface CfResponseLike {
+  status: number;
   headers: { get(name: string): string | null };
 }
 interface CfCtxLike {
@@ -36,7 +40,9 @@ export function mapCacheStatus(header: string | null): CacheStatus | undefined {
 }
 
 /** True when the response is an HTML document (worth a page_view). */
-export function isHtmlResponse(response: CfResponseLike): boolean {
+export function isHtmlResponse(response: {
+  headers: { get(name: string): string | null };
+}): boolean {
   return (response.headers.get('content-type') ?? '')
     .toLowerCase()
     .includes('text/html');
@@ -69,7 +75,12 @@ export function trackEdge(
     }
 
     const matcher = config.shouldTrack ?? shouldTrackPath;
-    if (!matcher(pathname) || !isHtmlResponse(response)) return;
+    if (
+      !matcher(pathname) ||
+      !isTrackableStatus(response.status) ||
+      !isHtmlResponse(response)
+    )
+      return;
 
     // Workers use ctx.waitUntil for fire-and-forget; keepalive off.
     const client = createClient({ ...config, keepalive: false });

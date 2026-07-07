@@ -1,5 +1,5 @@
 import { type AnalyticsClient, type ClientConfig, createClient } from './core';
-import { shouldTrackPath } from './matchers';
+import { isTrackableStatus, shouldTrackPath } from './matchers';
 import { applyOrigin, domainOrigin } from './origin';
 
 type HeaderBag = Record<string, string | string[] | undefined>;
@@ -60,6 +60,10 @@ interface ExpressReqLike {
   headers: HeaderBag;
   get(name: string): string | undefined;
 }
+interface ServerResponseLike {
+  statusCode: number;
+  on(event: 'finish', listener: () => void): unknown;
+}
 type NextFn = () => void;
 
 export interface NodeMiddlewareConfig extends ClientConfig {
@@ -69,23 +73,31 @@ export interface NodeMiddlewareConfig extends ClientConfig {
 /** Express/connect middleware. Fire-and-forget; always calls next(). */
 export function analyticsMiddleware(
   config: NodeMiddlewareConfig,
-): (req: ExpressReqLike, _res: unknown, next: NextFn) => void {
+): (req: ExpressReqLike, res: ServerResponseLike, next: NextFn) => void {
   const client = createClient(config);
   const matcher = config.shouldTrack ?? shouldTrackPath;
 
-  return (req, _res, next) => {
+  return (req, res, next) => {
     try {
       const pathname = req.originalUrl.split('?')[0] ?? '/';
       if (matcher(pathname)) {
         const host = req.get('host') ?? 'localhost';
         const url = `${req.protocol}://${host}${req.originalUrl}`;
-        // catch the build/send rejection so a voided promise never becomes a fatal unhandled rejection
-        void capturePageView(client, {
-          headers: req.headers,
-          url,
-          domain: config.domain,
-        }).catch(() => {
-          // never block the request
+        const headers = req.headers;
+        // Wait for the response to finish so we can gate on status:
+        // non-2xx (scanner 404s, etc.) must not count.
+        res.on('finish', () => {
+          try {
+            if (!isTrackableStatus(res.statusCode)) return;
+            // fire-and-forget; swallow send errors, never surface to the request
+            void capturePageView(client, {
+              headers,
+              url,
+              domain: config.domain,
+            }).catch(() => {});
+          } catch {
+            // never break the response
+          }
         });
       }
     } catch {

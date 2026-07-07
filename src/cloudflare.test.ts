@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 
-import { mapCacheStatus, isHtmlResponse, trackEdge } from './cloudflare';
+import {
+  mapCacheStatus,
+  isHtmlResponse,
+  isTrackableStatus,
+  trackEdge,
+} from './cloudflare';
 
 describe('mapCacheStatus', () => {
   it('maps Cloudflare statuses to the coarse vocab', () => {
@@ -37,6 +42,19 @@ describe('isHtmlResponse', () => {
   });
 });
 
+describe('isTrackableStatus', () => {
+  it('true only for a final 2xx', () => {
+    expect(isTrackableStatus(200)).toBe(true);
+    expect(isTrackableStatus(204)).toBe(true);
+    expect(isTrackableStatus(299)).toBe(true);
+    expect(isTrackableStatus(301)).toBe(false);
+    expect(isTrackableStatus(304)).toBe(false);
+    expect(isTrackableStatus(404)).toBe(false);
+    expect(isTrackableStatus(500)).toBe(false);
+    expect(isTrackableStatus(undefined)).toBe(false);
+  });
+});
+
 describe('trackEdge', () => {
   const cfg = {
     writeKey: 'pa_k_s',
@@ -66,6 +84,7 @@ describe('trackEdge', () => {
       }),
     };
     const response = {
+      status: 200,
       headers: headers({
         'content-type': 'text/html',
         'cf-cache-status': 'HIT',
@@ -103,6 +122,7 @@ describe('trackEdge', () => {
     const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
     const request = { url: 'https://site.com/blog/x', headers: headers({}) };
     const response = {
+      status: 200,
       headers: headers({ 'content-type': 'application/json' }),
     };
     trackEdge(request as never, response as never, ctx as never, cfg);
@@ -113,7 +133,10 @@ describe('trackEdge', () => {
     const promises: Promise<unknown>[] = [];
     const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
     const request = { url: 'https://site.com/logo.png', headers: headers({}) };
-    const response = { headers: headers({ 'content-type': 'text/html' }) };
+    const response = {
+      status: 200,
+      headers: headers({ 'content-type': 'text/html' }),
+    };
     trackEdge(request as never, response as never, ctx as never, cfg);
     expect(promises).toHaveLength(0);
   });
@@ -130,11 +153,29 @@ describe('trackEdge', () => {
     ).not.toThrow();
   });
 
+  it('does NOT emit for a non-2xx HTML response (scanner 404 probe)', () => {
+    const promises: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
+    const request = {
+      url: 'https://site.com/wp-login.php',
+      headers: headers({ 'user-agent': 'UA' }),
+    };
+    // a 404 error page is served as text/html, so isHtmlResponse alone lets it through
+    for (const status of [301, 404, 500]) {
+      const response = { status, headers: headers({ 'content-type': 'text/html' }) };
+      trackEdge(request as never, response as never, ctx as never, cfg);
+    }
+    expect(promises).toHaveLength(0);
+  });
+
   it('honors a custom shouldTrack override', () => {
     const promises: Promise<unknown>[] = [];
     const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
     const request = { url: 'https://site.com/blog/x', headers: headers({}) };
-    const response = { headers: headers({ 'content-type': 'text/html' }) };
+    const response = {
+      status: 200,
+      headers: headers({ 'content-type': 'text/html' }),
+    };
 
     // override forces NO tracking even for a normally-trackable HTML page
     trackEdge(request as never, response as never, ctx as never, {
