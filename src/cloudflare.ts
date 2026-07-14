@@ -1,12 +1,17 @@
 import { type ClientConfig, createClient } from './core';
-import { isTrackableStatus, shouldTrackPath } from './matchers';
+import {
+  isTrackableMethod,
+  isTrackableStatus,
+  shouldTrackPath,
+} from './matchers';
 
 // Re-exported for back-compat; the shared definition lives in ./matchers.
-export { isTrackableStatus } from './matchers';
+export { isTrackableStatus, isTrackableMethod } from './matchers';
 
 // Structural Cloudflare types; no @cloudflare/workers-types runtime dependency.
 interface CfRequestLike {
   url: string;
+  method?: string;
   headers: { get(name: string): string | null };
 }
 interface CfResponseLike {
@@ -76,6 +81,7 @@ export function trackEdge(
 
     const matcher = config.shouldTrack ?? shouldTrackPath;
     if (
+      !isTrackableMethod(request.method) ||
       !matcher(pathname) ||
       !isTrackableStatus(response.status) ||
       !isHtmlResponse(response)

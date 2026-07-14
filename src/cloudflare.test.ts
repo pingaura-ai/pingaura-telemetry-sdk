@@ -168,6 +168,68 @@ describe('trackEdge', () => {
     expect(promises).toHaveLength(0);
   });
 
+  it('does NOT emit for a HEAD request (static-export prefetch probe)', () => {
+    const promises: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
+    // Next.js prefetches links by probing the static HTML with HEAD. The
+    // response is a 200 text/html, so path/status/content-type all pass.
+    const request = {
+      url: 'https://site.com/about/',
+      method: 'HEAD',
+      headers: headers({ referer: 'https://site.com/', 'user-agent': 'UA' }),
+    };
+    const response = {
+      status: 200,
+      headers: headers({ 'content-type': 'text/html' }),
+    };
+    trackEdge(request as never, response as never, ctx as never, cfg);
+    expect(promises).toHaveLength(0);
+  });
+
+  it('counts one page_view per load, not one per prefetched link', () => {
+    const promises: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
+    const response = {
+      status: 200,
+      headers: headers({ 'content-type': 'text/html' }),
+    };
+
+    // one real navigation
+    trackEdge(
+      { url: 'https://site.com/', method: 'GET', headers: headers({}) } as never,
+      response as never,
+      ctx as never,
+      cfg,
+    );
+    // plus the HEAD probes Next fires for every link in the viewport
+    for (const path of ['/about/', '/blog/', '/pricing/']) {
+      trackEdge(
+        {
+          url: `https://site.com${path}`,
+          method: 'HEAD',
+          headers: headers({ referer: 'https://site.com/' }),
+        } as never,
+        response as never,
+        ctx as never,
+        cfg,
+      );
+    }
+
+    expect(promises).toHaveLength(1);
+  });
+
+  it('treats a missing method as a GET', () => {
+    const promises: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
+    const request = { url: 'https://site.com/blog/x', headers: headers({}) };
+    const response = {
+      status: 200,
+      headers: headers({ 'content-type': 'text/html' }),
+    };
+    trackEdge(request as never, response as never, ctx as never, cfg);
+    expect(promises).toHaveLength(1);
+  });
+
   it('honors a custom shouldTrack override', () => {
     const promises: Promise<unknown>[] = [];
     const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
