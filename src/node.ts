@@ -1,5 +1,9 @@
 import { type AnalyticsClient, type ClientConfig, createClient } from './core';
-import { isTrackableStatus, shouldTrackPath } from './matchers';
+import {
+  isTrackableMethod,
+  isTrackableStatus,
+  shouldTrackPath,
+} from './matchers';
 import { applyOrigin, domainOrigin } from './origin';
 
 type HeaderBag = Record<string, string | string[] | undefined>;
@@ -56,6 +60,7 @@ export async function capturePageView(
 
 interface ExpressReqLike {
   originalUrl: string;
+  method?: string;
   protocol: string;
   headers: HeaderBag;
   get(name: string): string | undefined;
@@ -67,7 +72,14 @@ interface ServerResponseLike {
 type NextFn = () => void;
 
 export interface NodeMiddlewareConfig extends ClientConfig {
-  shouldTrack?: (pathname: string) => boolean;
+  /**
+   * Override the default path + method gating and decide for yourself. Return
+   * true to count something the defaults skip — e.g. a POST that renders a page
+   * someone actually reads. The method is passed so you can still turn away
+   * HEAD probes, which Express answers from the matching GET route.
+   * Status gating still applies on top of this.
+   */
+  shouldTrack?: (pathname: string, request: { method: string }) => boolean;
 }
 
 /** Express/connect middleware. Fire-and-forget; always calls next(). */
@@ -75,12 +87,18 @@ export function analyticsMiddleware(
   config: NodeMiddlewareConfig,
 ): (req: ExpressReqLike, res: ServerResponseLike, next: NextFn) => void {
   const client = createClient(config);
-  const matcher = config.shouldTrack ?? shouldTrackPath;
 
   return (req, res, next) => {
     try {
       const pathname = req.originalUrl.split('?')[0] ?? '/';
-      if (matcher(pathname)) {
+      // A custom shouldTrack owns the path + method call entirely, so a consumer
+      // can count something the defaults skip.
+      const method = req.method ?? 'GET';
+      const tracked = config.shouldTrack
+        ? config.shouldTrack(pathname, { method })
+        : shouldTrackPath(pathname) && isTrackableMethod(method);
+
+      if (tracked) {
         const host = req.get('host') ?? 'localhost';
         const url = `${req.protocol}://${host}${req.originalUrl}`;
         const headers = req.headers;
