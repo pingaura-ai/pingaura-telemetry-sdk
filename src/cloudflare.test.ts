@@ -230,6 +230,72 @@ describe('trackEdge', () => {
     expect(promises).toHaveLength(1);
   });
 
+  it('lets shouldTrack force-track a non-GET', () => {
+    const promises: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
+    const request = {
+      url: 'https://site.com/contact',
+      method: 'POST',
+      headers: headers({}),
+    };
+    const response = {
+      status: 200,
+      headers: headers({ 'content-type': 'text/html' }),
+    };
+    trackEdge(request as never, response as never, ctx as never, {
+      ...cfg,
+      shouldTrack: () => true,
+    });
+    expect(promises).toHaveLength(1);
+  });
+
+  it('passes the method to shouldTrack so it can decide per-method', () => {
+    const seen: { pathname: string; method: string }[] = [];
+    const ctx = { waitUntil: () => {} };
+    const response = {
+      status: 200,
+      headers: headers({ 'content-type': 'text/html' }),
+    };
+    for (const method of ['GET', 'HEAD']) {
+      trackEdge(
+        { url: 'https://site.com/a', method, headers: headers({}) } as never,
+        response as never,
+        ctx as never,
+        {
+          ...cfg,
+          shouldTrack: (pathname, req) => {
+            seen.push({ pathname, method: req.method });
+            return true;
+          },
+        },
+      );
+    }
+    expect(seen).toEqual([
+      { pathname: '/a', method: 'GET' },
+      { pathname: '/a', method: 'HEAD' },
+    ]);
+  });
+
+  it('shouldTrack that ignores the method still skips HEAD if it returns false', () => {
+    const promises: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
+    const response = {
+      status: 200,
+      headers: headers({ 'content-type': 'text/html' }),
+    };
+    trackEdge(
+      {
+        url: 'https://site.com/a',
+        method: 'HEAD',
+        headers: headers({}),
+      } as never,
+      response as never,
+      ctx as never,
+      { ...cfg, shouldTrack: (_p, req) => req.method === 'GET' },
+    );
+    expect(promises).toHaveLength(0);
+  });
+
   it('honors a custom shouldTrack override', () => {
     const promises: Promise<unknown>[] = [];
     const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
@@ -247,7 +313,11 @@ describe('trackEdge', () => {
     expect(promises).toHaveLength(0);
 
     // override forces tracking even for a path the default matcher would skip
-    const asset = { url: 'https://site.com/logo.png', headers: headers({}) };
+    const asset = {
+      url: 'https://site.com/logo.png',
+      method: 'GET',
+      headers: headers({}),
+    };
     trackEdge(asset as never, response as never, ctx as never, {
       ...cfg,
       shouldTrack: () => true,
