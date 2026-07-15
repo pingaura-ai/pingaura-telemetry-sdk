@@ -6,7 +6,7 @@ import {
 } from './matchers';
 
 // Re-exported for back-compat; the shared definition lives in ./matchers.
-export { isTrackableStatus, isTrackableMethod } from './matchers';
+export { isTrackableStatus } from './matchers';
 
 // Structural Cloudflare types; no @cloudflare/workers-types runtime dependency.
 interface CfRequestLike {
