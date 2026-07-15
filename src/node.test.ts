@@ -138,11 +138,76 @@ describe('analyticsMiddleware', () => {
     };
   };
 
-  const mkReq = (originalUrl: string) => ({
+  const mkReq = (originalUrl: string, method = 'GET') => ({
     originalUrl,
+    method,
     protocol: 'https',
     get: () => 'site.com',
     headers: { 'user-agent': 'UA' },
+  });
+
+  const mkCfg = (fetchImpl: unknown, extra = {}) => ({
+    writeKey: 'pa_k_s',
+    endpoint: 'https://in.test/v1/events',
+    domain: 'example.com',
+    fetchImpl: fetchImpl as never,
+    ...extra,
+  });
+
+  it('does NOT track a HEAD request (Express auto-answers HEAD for GET routes)', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
+    const mw = analyticsMiddleware(mkCfg(fetchImpl));
+    const res = mockRes(200);
+    mw(mkReq('/blog/a', 'HEAD') as never, res as never, vi.fn());
+    res.finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('does NOT track a POST (a JSON 200 is not a page someone read)', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
+    const mw = analyticsMiddleware(mkCfg(fetchImpl));
+    const res = mockRes(200);
+    mw(mkReq('/login', 'POST') as never, res as never, vi.fn());
+    res.finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('lets shouldTrack force-track a non-GET and receives the method', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
+    const seen: string[] = [];
+    const mw = analyticsMiddleware(
+      mkCfg(fetchImpl, {
+        shouldTrack: (_p: string, req: { method: string }) => {
+          seen.push(req.method);
+          return true;
+        },
+      }),
+    );
+    const res = mockRes(200);
+    mw(mkReq('/contact', 'POST') as never, res as never, vi.fn());
+    res.finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toEqual(['POST']);
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it('treats a missing method as a GET', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
+    const mw = analyticsMiddleware(mkCfg(fetchImpl));
+    const res = mockRes(200);
+    // a caller predating the method check
+    const req = {
+      originalUrl: '/blog/a',
+      protocol: 'https',
+      get: () => 'site.com',
+      headers: {},
+    };
+    mw(req as never, res as never, vi.fn());
+    res.finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it('tracks a real page (2xx) and calls next() exactly once', async () => {

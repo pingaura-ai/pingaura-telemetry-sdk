@@ -1,5 +1,9 @@
 import { type ClientConfig, createClient } from './core';
-import { isTrackableStatus, shouldTrackPath } from './matchers';
+import {
+  isTrackableMethod,
+  isTrackableStatus,
+  shouldTrackPath,
+} from './matchers';
 
 // Re-exported for back-compat; the shared definition lives in ./matchers.
 export { isTrackableStatus } from './matchers';
@@ -7,6 +11,7 @@ export { isTrackableStatus } from './matchers';
 // Structural Cloudflare types; no @cloudflare/workers-types runtime dependency.
 interface CfRequestLike {
   url: string;
+  method?: string;
   headers: { get(name: string): string | null };
 }
 interface CfResponseLike {
@@ -49,8 +54,14 @@ export function isHtmlResponse(response: {
 }
 
 export interface EdgeConfig extends ClientConfig {
-  /** Override the default path matcher. */
-  shouldTrack?: (pathname: string) => boolean;
+  /**
+   * Override the default path + method gating and decide for yourself. Return
+   * true to count something the defaults skip — e.g. a POST that renders a page
+   * someone actually reads. The method is passed so you can still turn away
+   * HEAD prefetch probes, which look exactly like a real page otherwise.
+   * Status and content-type gating still apply on top of this.
+   */
+  shouldTrack?: (pathname: string, request: { method: string }) => boolean;
 }
 
 /**
@@ -74,9 +85,15 @@ export function trackEdge(
       return; // malformed url, skip
     }
 
-    const matcher = config.shouldTrack ?? shouldTrackPath;
+    // A custom shouldTrack owns the path + method call entirely, so a consumer
+    // can count something the defaults skip.
+    const method = request.method ?? 'GET';
+    const tracked = config.shouldTrack
+      ? config.shouldTrack(pathname, { method })
+      : shouldTrackPath(pathname) && isTrackableMethod(method);
+
     if (
-      !matcher(pathname) ||
+      !tracked ||
       !isTrackableStatus(response.status) ||
       !isHtmlResponse(response)
     )

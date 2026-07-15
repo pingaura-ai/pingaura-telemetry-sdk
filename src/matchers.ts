@@ -15,3 +15,14 @@ export function shouldTrackPath(pathname: string): boolean {
 export function isTrackableStatus(status: number | undefined): boolean {
   return typeof status === 'number' && status >= 200 && status < 300;
 }
+
+/**
+ * True only for a GET. Only a GET renders a page someone actually looked at.
+ * A HEAD returns the same 200 + text/html headers with no body, so nothing
+ * else here can tell it apart — Next.js prefetches links by probing them with
+ * HEAD, which would otherwise count as a page_view per link on screen.
+ * Missing method means a caller that predates this check; assume GET.
+ */
+export function isTrackableMethod(method: string | undefined): boolean {
+  return (method ?? 'GET').toUpperCase() === 'GET';
+}
