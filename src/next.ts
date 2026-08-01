@@ -1,5 +1,6 @@
 import { type AnalyticsClient, type PageViewInput, createClient } from './core';
 import { domainOrigin } from './origin';
+import { extractForwardedSignals } from './signals';
 
 // Next.js App Router integration. A page_view fires only when a real page
 // renders: middleware records the path, <TrackPageView/> emits from the page.
@@ -88,6 +89,10 @@ export function buildPageViewFromHeaders(
     referrer: headers.get('referer') ?? undefined,
     userAgent: headers.get('user-agent') ?? undefined,
     ip,
+    // Reaching here means a real page rendered → a document navigation.
+    signals: extractForwardedSignals((n) => headers.get(n), {
+      isBrowserNav: true,
+    }),
   };
 }
 

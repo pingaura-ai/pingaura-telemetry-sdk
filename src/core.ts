@@ -1,6 +1,7 @@
 import {
   type AnalyticsEvent,
   type BuildEventInput,
+  type ForwardedSignals,
   buildEvent,
 } from './contract';
 
@@ -34,6 +35,8 @@ export interface PageViewInput {
   locale?: string;
   userAgent?: string;
   ip?: string;
+  /** Bot-detection signals from the visitor's request (server adapters). */
+  signals?: ForwardedSignals;
   properties?: Record<string, unknown>;
 }
 
@@ -177,6 +180,7 @@ export function createClient(config: ClientConfig): AnalyticsClient {
             locale: input.locale,
             user_agent: input.userAgent,
           },
+          signals: input.signals,
           properties: input.properties,
         },
         { ip: input.ip },

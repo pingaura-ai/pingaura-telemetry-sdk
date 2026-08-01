@@ -4,6 +4,7 @@ import {
   isTrackableStatus,
   shouldTrackPath,
 } from './matchers';
+import { extractForwardedSignals } from './signals';
 
 // Re-exported for back-compat; the shared definition lives in ./matchers.
 export { isTrackableStatus } from './matchers';
@@ -13,6 +14,8 @@ interface CfRequestLike {
   url: string;
   method?: string;
   headers: { get(name: string): string | null };
+  /** Cloudflare request metadata; `httpProtocol` is e.g. "HTTP/2". */
+  cf?: { httpProtocol?: string };
 }
 interface CfResponseLike {
   status: number;
@@ -103,6 +106,9 @@ export function trackEdge(
     const client = createClient({ ...config, keepalive: false });
     const cacheStatus = mapCacheStatus(response.headers.get('cf-cache-status'));
 
+    // request.cf.httpProtocol is "HTTP/2" etc.; normalize to "2"/"1.1".
+    const httpVersion = request.cf?.httpProtocol?.replace(/^HTTP\//i, '');
+
     ctx.waitUntil(
       client.pageView({
         url: request.url,
@@ -110,6 +116,11 @@ export function trackEdge(
         referrer: request.headers.get('referer') ?? undefined,
         userAgent: request.headers.get('user-agent') ?? undefined,
         ip: request.headers.get('cf-connecting-ip') ?? undefined,
+        // A tracked HTML page reaching here is a document navigation.
+        signals: extractForwardedSignals((n) => request.headers.get(n), {
+          httpVersion,
+          isBrowserNav: true,
+        }),
         properties: cacheStatus ? { cache_status: cacheStatus } : undefined,
       }),
     );

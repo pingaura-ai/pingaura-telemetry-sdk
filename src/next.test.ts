@@ -103,3 +103,22 @@ describe('TrackPageView', () => {
     ).rejects.toThrow(/outside a request scope/);
   });
 });
+
+describe('buildPageViewFromHeaders — forwarded signals', () => {
+  it('includes header signals + is_browser_nav', () => {
+    const headers = new Headers({
+      'x-pa-path': '/pricing',
+      'user-agent': 'UA',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'same-origin',
+      'accept-language': 'en-GB',
+    });
+    const data = buildPageViewFromHeaders(headers, { domain: 'example.com' });
+    expect(data?.signals).toMatchObject({
+      sec_fetch_mode: 'navigate',
+      sec_fetch_site: 'same-origin',
+      accept_language: 'en-GB',
+      is_browser_nav: true,
+    });
+  });
+});
