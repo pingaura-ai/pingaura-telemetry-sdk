@@ -96,14 +96,14 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.0.1",
-    "eslint": "^10.5.0",
-    "next": "^16.2.10",
-    "prettier": "^3.8.4",
-    "tsdown": "^0.22.3",
+    "@types/node": "^26.1.2",
+    "eslint": "^10.8.0",
+    "next": "^16.2.12",
+    "prettier": "^3.9.6",
+    "tsdown": "^0.22.14",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.0",
-    "vitest": "^4.1.9"
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.10"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
