@@ -21,6 +21,23 @@ export interface EventContext {
   country?: string;
 }
 
+/**
+ * Bot-detection signals observed on the visitor's inbound request, forwarded
+ * for server-side scoring. All optional; the collector derives booleans and
+ * strips this block before storage (never warehoused). `is_browser_nav` is set
+ * from the adapter's page-view path (a real document navigation), never from
+ * the headers below.
+ */
+export interface ForwardedSignals {
+  sec_fetch_mode?: string;
+  sec_fetch_site?: string;
+  sec_ch_ua?: string;
+  accept_language?: string;
+  accept?: string;
+  http_version?: string;
+  is_browser_nav?: boolean;
+}
+
 export interface AnalyticsEvent {
   event_id: string;
   schema_version: typeof ANALYTICS_SCHEMA_VERSION;
@@ -29,6 +46,7 @@ export interface AnalyticsEvent {
   timestamp: string;
   sent_at: string;
   context: EventContext;
+  signals?: ForwardedSignals;
   properties: Record<string, unknown>;
   library?: { name: string; version: string };
 }
@@ -36,6 +54,8 @@ export interface AnalyticsEvent {
 export interface BuildEventInput {
   type: EventType;
   context: EventContext;
+  /** Bot-detection signals from the visitor's request (server adapters only). */
+  signals?: ForwardedSignals;
   /**
    * Event metadata, archived verbatim. Never put PII here (emails, names, user
    * IDs, raw query strings). The collector rejects events whose values look
@@ -61,6 +81,7 @@ export function buildEvent(
     timestamp: ts,
     sent_at: now(),
     context: input.context,
+    signals: input.signals,
     properties: input.properties ?? {},
     library: input.library,
   };

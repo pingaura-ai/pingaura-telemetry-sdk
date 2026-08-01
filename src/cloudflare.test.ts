@@ -325,3 +325,50 @@ describe('trackEdge', () => {
     expect(promises).toHaveLength(1);
   });
 });
+
+describe('trackEdge — forwarded signals', () => {
+  const cfg = {
+    writeKey: 'pa_k_s',
+    endpoint: 'https://in.test/v1/events',
+    domain: 'example.com',
+  };
+
+  it('forwards header signals + normalized http_version + is_browser_nav', async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fn = vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response('{}', { status: 202 });
+    });
+    const promises: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
+    const request = {
+      url: 'https://site.com/pricing',
+      cf: { httpProtocol: 'HTTP/2' },
+      headers: headers({
+        'user-agent': 'UA',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'accept-language': 'en-GB',
+        'cf-connecting-ip': '203.0.113.7',
+      }),
+    };
+    const response = { status: 200, headers: headers({ 'content-type': 'text/html' }) };
+
+    trackEdge(request as never, response as never, ctx as never, {
+      ...cfg,
+      fetchImpl: fn as never,
+    });
+    await Promise.all(promises);
+
+    const body = JSON.parse(String(calls[0]!.init.body)) as {
+      events: { signals: Record<string, unknown> }[];
+    };
+    expect(body.events[0]!.signals).toMatchObject({
+      sec_fetch_mode: 'navigate',
+      sec_fetch_site: 'none',
+      accept_language: 'en-GB',
+      http_version: '2', // normalized from "HTTP/2"
+      is_browser_nav: true,
+    });
+  });
+})

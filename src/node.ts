@@ -5,6 +5,7 @@ import {
   shouldTrackPath,
 } from './matchers';
 import { applyOrigin, domainOrigin } from './origin';
+import { extractForwardedSignals } from './signals';
 
 type HeaderBag = Record<string, string | string[] | undefined>;
 
@@ -22,6 +23,8 @@ export interface CaptureInput {
    * from this when provided. See `domainOrigin`.
    */
   domain?: string;
+  /** Negotiated HTTP version of the visitor's request (e.g. Express `req.httpVersion`). */
+  httpVersion?: string;
 }
 
 /** Framework-agnostic page_view capture from a request-like object. */
@@ -55,6 +58,11 @@ export async function capturePageView(
     referrer: header(input.headers, 'referer'),
     userAgent: header(input.headers, 'user-agent'),
     ip,
+    // A tracked page path reaching here IS a document navigation → is_browser_nav.
+    signals: extractForwardedSignals((n) => header(input.headers, n), {
+      httpVersion: input.httpVersion,
+      isBrowserNav: true,
+    }),
   });
 }
 
@@ -63,6 +71,7 @@ interface ExpressReqLike {
   method?: string;
   protocol: string;
   headers: HeaderBag;
+  httpVersion?: string;
   get(name: string): string | undefined;
 }
 interface ServerResponseLike {
@@ -102,6 +111,7 @@ export function analyticsMiddleware(
         const host = req.get('host') ?? 'localhost';
         const url = `${req.protocol}://${host}${req.originalUrl}`;
         const headers = req.headers;
+        const httpVersion = req.httpVersion;
         // Wait for the response to finish so we can gate on status:
         // non-2xx (scanner 404s, etc.) must not count.
         res.on('finish', () => {
@@ -112,6 +122,7 @@ export function analyticsMiddleware(
               headers,
               url,
               domain: config.domain,
+              httpVersion,
             }).catch(() => {});
           } catch {
             // never break the response

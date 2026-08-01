@@ -244,6 +244,33 @@ Custom `properties` are archived verbatim. **Never put PII in them**: no emails,
 names, user IDs, or raw query strings. The collector rejects events whose values
 look like PII. Use opaque or aggregate values only.
 
+## Request signals (server adapters)
+
+From 0.3.0 the server adapters attach a small `signals` block to each page view,
+used for server-side bot detection. It carries only request metadata the
+visitor's browser already sends to your origin:
+
+| Field | Source header |
+| --- | --- |
+| `sec_fetch_mode`, `sec_fetch_site` | `Sec-Fetch-Mode`, `Sec-Fetch-Site` |
+| `sec_ch_ua` | `Sec-CH-UA` |
+| `accept_language`, `accept` | `Accept-Language`, `Accept` |
+| `http_version` | negotiated HTTP version (Node and Cloudflare only) |
+| `is_browser_nav` | set by the adapter's page-view path, never read from a header |
+
+No cookies, no `Authorization`, no request body, no URL query. Values are
+trimmed and length-capped before they are sent.
+
+**These values are never stored.** The collector reads them, derives a bot score
+and reason codes, and drops the raw block before the event is queued. Raw
+headers would be a fingerprinting dataset, so they are discarded by design.
+
+Browser tracking is unaffected: the generic client sends no signals block.
+
+On Node/Express the HTTP version is read at your origin, so behind a proxy or
+load balancer it reports that hop rather than the visitor's connection. Pass it
+yourself via `capturePageView({ httpVersion })` if you have the real value.
+
 ## Development
 
 ```bash

@@ -75,7 +75,9 @@ describe('capturePageView', () => {
     const body = JSON.parse(String(callArgs.body)) as {
       events: { context: Record<string, unknown> }[];
     };
-    expect(body.events[0]!.context.url).toBe('https://example.com/pricing?ref=x');
+    expect(body.events[0]!.context.url).toBe(
+      'https://example.com/pricing?ref=x',
+    );
     expect(body.events[0]!.context.path).toBe('/pricing');
   });
 
@@ -119,7 +121,9 @@ describe('capturePageView', () => {
     const body = JSON.parse(String(callArgs.body)) as {
       events: { context: Record<string, unknown> }[];
     };
-    expect(body.events[0]!.context.url).toBe('https://example.com/pricing?ref=x');
+    expect(body.events[0]!.context.url).toBe(
+      'https://example.com/pricing?ref=x',
+    );
     expect(body.events[0]!.context.path).toBe('/pricing');
   });
 });
@@ -273,5 +277,44 @@ describe('analyticsMiddleware', () => {
     res.finish();
     await new Promise((r) => setTimeout(r, 0));
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('capturePageView — forwarded signals', () => {
+  it('forwards header signals + is_browser_nav + http_version', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 202 }));
+    const client = createClient({
+      writeKey: 'pa_k_s',
+      endpoint: 'https://in.test/v1/events',
+      domain: 'example.com',
+      fetchImpl: fetchImpl as never,
+    });
+    await capturePageView(client, {
+      headers: {
+        'user-agent': 'UA',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'sec-ch-ua': '"Chromium";v="149"',
+        'accept-language': 'en-US',
+        accept: 'text/html',
+      },
+      url: 'https://site.com/p',
+      httpVersion: '1.1',
+    });
+    const callArgs = (
+      fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    )[1];
+    const body = JSON.parse(String(callArgs.body)) as {
+      events: { signals: Record<string, unknown> }[];
+    };
+    expect(body.events[0]!.signals).toEqual({
+      sec_fetch_mode: 'navigate',
+      sec_fetch_site: 'none',
+      sec_ch_ua: '"Chromium";v="149"',
+      accept_language: 'en-US',
+      accept: 'text/html',
+      http_version: '1.1',
+      is_browser_nav: true,
+    });
   });
 });
