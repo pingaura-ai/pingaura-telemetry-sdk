@@ -2,7 +2,7 @@
 
 Newest first. [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2026-07-28
+## [0.3.0] - 2026-08-01
 - Server adapters now forward request signals (Sec-Fetch, Sec-CH-UA, Accept-Language, Accept — plus HTTP version on Node and Cloudflare) for server-side bot detection. Capped on send, stripped by the collector — never stored. Browser tracking unchanged.
 
 ## [0.2.1] - 2026-07-15
