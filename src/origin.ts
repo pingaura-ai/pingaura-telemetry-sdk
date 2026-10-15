@@ -43,3 +43,24 @@ export function applyOrigin(url: string, origin: string): string {
     return url;
   }
 }
+
+/**
+ * Origin the client addressed, from the first `X-Forwarded-Host` hop or else
+ * `Host`, with the scheme from `X-Forwarded-Proto` or `proto`. A signed
+ * request covers this host, so it is reported as sent rather than rebuilt from
+ * the registered domain. Undefined when no usable host header is present.
+ */
+export function clientOrigin(
+  get: (name: string) => string | null | undefined,
+  proto = 'https',
+): string | undefined {
+  const first = (v: string | null | undefined) => v?.split(',')[0]?.trim();
+  const host = first(get('x-forwarded-host')) || first(get('host'));
+  if (!host) return undefined;
+  const scheme = first(get('x-forwarded-proto')) || proto;
+  try {
+    return new URL(`${scheme}://${host}`).origin;
+  } catch {
+    return undefined;
+  }
+}

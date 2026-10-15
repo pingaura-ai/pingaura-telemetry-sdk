@@ -2,6 +2,9 @@
 
 Newest first. [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-15
+- Node and Cloudflare now send the response status and record AI crawler requests (and any request with a `Signature` header) with any status or content type, GET or HEAD, plus crawler fetches of `/robots.txt`, `/llms.txt`, `/llms-full.txt` and `/sitemap.xml`. Next.js sends no status. HTTP message signature headers are forwarded for verification, never stored, and a signed request keeps the host and path the client used.
+
 ## [0.3.0] - 2026-08-01
 - Server adapters now forward request signals (Sec-Fetch, Sec-CH-UA, Accept-Language, Accept — plus HTTP version on Node and Cloudflare) for server-side bot detection. Capped on send, stripped by the collector — never stored. Browser tracking unchanged.
 

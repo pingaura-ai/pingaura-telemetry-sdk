@@ -49,6 +49,11 @@ instance is configured for one registered site). If you call the lower-level
 `capturePageView` directly (instead of the Express middleware), pass `domain`
 yourself to get the same rewrite.
 
+A request carrying an HTTP message `Signature` header is the exception: its URL
+keeps the host and path the client addressed, because the signature covers
+both. The reported host comes from `X-Forwarded-Host`, then `Host`. The
+Cloudflare adapter always reports `request.url` as received.
+
 ## Usage
 
 ### Next.js (App Router)
@@ -257,13 +262,32 @@ visitor's browser already sends to your origin:
 | `accept_language`, `accept` | `Accept-Language`, `Accept` |
 | `http_version` | negotiated HTTP version (Node and Cloudflare only) |
 | `is_browser_nav` | set by the adapter's page-view path, never read from a header |
+| `web_bot_auth` | `Signature`, `Signature-Input`, `Signature-Agent` and the request method, only when a `Signature` header is present |
 
 No cookies, no `Authorization`, no request body, no URL query. Values are
 trimmed and length-capped before they are sent.
 
 **These values are never stored.** The collector reads them, derives a bot score
 and reason codes, and drops the raw block before the event is queued. Raw
-headers would be a fingerprinting dataset, so they are discarded by design.
+headers would be a fingerprinting dataset, so they are discarded by design. The
+signature headers are kept only long enough to verify the signature
+([Web Bot Auth](https://datatracker.ietf.org/wg/webbotauth/about/)), then
+discarded.
+
+## Crawler requests (server adapters)
+
+From 0.4.0 the Node and Cloudflare adapters record a request from a known AI
+crawler (matched on the User-Agent, e.g. `GPTBot`, `ClaudeBot`,
+`PerplexityBot`) or any request with a `Signature` header, whatever the
+response: any status, any content type, GET or HEAD. This shows what each
+crawler was served, including 403s and 404s. Path gating still applies, except
+that crawler fetches of `/robots.txt`, `/llms.txt`, `/llms-full.txt` and
+`/sitemap.xml` are recorded too. Human traffic is gated as before (GET, 2xx,
+and `text/html` on Cloudflare).
+
+Every server-side page view now carries the response status as
+`context.status`. The Next.js adapter only sees pages that render, so it sends
+no status and does not record crawler requests that end in an error.
 
 Browser tracking is unaffected: the generic client sends no signals block.
 

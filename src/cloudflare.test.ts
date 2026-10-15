@@ -372,3 +372,165 @@ describe('trackEdge — forwarded signals', () => {
     });
   });
 })
+
+describe('trackEdge crawlers and response status', () => {
+  const cfg = {
+    writeKey: 'pa_k_s',
+    endpoint: 'https://in.test/v1/events',
+    domain: 'example.com',
+  };
+
+  type SentEvent = {
+    context: Record<string, unknown>;
+    signals?: Record<string, unknown>;
+  };
+
+  async function run(
+    request: Record<string, unknown>,
+    response: { status: number; headers: ReturnType<typeof headers> },
+  ): Promise<SentEvent[]> {
+    const calls: RequestInit[] = [];
+    const fn = vi.fn(async (_url: string, init: RequestInit) => {
+      calls.push(init);
+      return new Response('{}', { status: 202 });
+    });
+    const promises: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
+    trackEdge(request as never, response as never, ctx as never, {
+      ...cfg,
+      fetchImpl: fn as never,
+    });
+    await Promise.all(promises);
+    return calls.map(
+      (c) => (JSON.parse(String(c.body)) as { events: SentEvent[] }).events[0]!,
+    );
+  }
+
+  it('sends the response status on a human page view', async () => {
+    const [ev] = await run(
+      { url: 'https://site.com/a', headers: headers({ 'user-agent': 'UA' }) },
+      { status: 200, headers: headers({ 'content-type': 'text/html' }) },
+    );
+    expect(ev!.context.status).toBe(200);
+  });
+
+  it('tracks a non-2xx, non-HTML response for a known AI crawler', async () => {
+    const events = await run(
+      {
+        url: 'https://site.com/a',
+        headers: headers({ 'user-agent': 'Mozilla/5.0 (compatible; GPTBot/1.2)' }),
+      },
+      { status: 403, headers: headers({ 'content-type': 'text/plain' }) },
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]!.context.status).toBe(403);
+  });
+
+  it('tracks any status for a request carrying a Signature header', async () => {
+    const events = await run(
+      {
+        url: 'https://site.com/a',
+        headers: headers({ 'user-agent': 'Mozilla/5.0', signature: 'sig1=:AA==:' }),
+      },
+      { status: 404, headers: headers({ 'content-type': 'application/json' }) },
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]!.context.status).toBe(404);
+  });
+
+  it('tracks a HEAD from a crawler, but not a POST', async () => {
+    const ua = headers({ 'user-agent': 'ClaudeBot/1.0' });
+    const ok = { status: 200, headers: headers({ 'content-type': 'text/html' }) };
+    expect(await run({ url: 'https://site.com/a', method: 'HEAD', headers: ua }, ok)).toHaveLength(1);
+    expect(await run({ url: 'https://site.com/a', method: 'POST', headers: ua }, ok)).toHaveLength(0);
+  });
+
+  it('still ignores a human 404', async () => {
+    const events = await run(
+      {
+        url: 'https://site.com/a',
+        headers: headers({ 'user-agent': 'Mozilla/5.0 Chrome/140' }),
+      },
+      { status: 404, headers: headers({ 'content-type': 'text/html' }) },
+    );
+    expect(events).toHaveLength(0);
+  });
+
+  it('forwards the signature headers and the request method', async () => {
+    const [ev] = await run(
+      {
+        url: 'https://site.com/a',
+        method: 'HEAD',
+        headers: headers({
+          signature: 'sig1=:AA==:',
+          'signature-input': 'sig1=("@authority" "@method")',
+          'signature-agent': '"https://chatgpt.com"',
+        }),
+      },
+      { status: 200, headers: headers({ 'content-type': 'text/html' }) },
+    );
+    expect(ev!.signals!.web_bot_auth).toEqual({
+      signature: 'sig1=:AA==:',
+      signature_input: 'sig1=("@authority" "@method")',
+      signature_agent: '"https://chatgpt.com"',
+      method: 'HEAD',
+    });
+  });
+
+  it('reports the host and path of the incoming request, not the registered domain', async () => {
+    const [ev] = await run(
+      {
+        url: 'https://www.site.com/Docs/A%20B?x=1',
+        headers: headers({ signature: 'sig1=:AA==:' }),
+      },
+      { status: 200, headers: headers({ 'content-type': 'text/html' }) },
+    );
+    const url = new URL(String(ev!.context.url));
+    expect(url.host).toBe('www.site.com');
+    expect(url.pathname).toBe('/Docs/A%20B');
+  });
+});
+
+describe('trackEdge crawler files', () => {
+  const cfg = {
+    writeKey: 'pa_k_s',
+    endpoint: 'https://in.test/v1/events',
+    domain: 'example.com',
+  };
+
+  async function statuses(ua: string, path: string, status: number) {
+    const calls: RequestInit[] = [];
+    const fn = vi.fn(async (_url: string, init: RequestInit) => {
+      calls.push(init);
+      return new Response('{}', { status: 202 });
+    });
+    const promises: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => promises.push(p) };
+    trackEdge(
+      { url: `https://site.com${path}`, headers: headers({ 'user-agent': ua }) } as never,
+      { status, headers: headers({ 'content-type': 'text/plain' }) } as never,
+      ctx as never,
+      { ...cfg, fetchImpl: fn as never },
+    );
+    await Promise.all(promises);
+    return calls.map(
+      (c) =>
+        (JSON.parse(String(c.body)) as {
+          events: { context: Record<string, unknown> }[];
+        }).events[0]!.context.status,
+    );
+  }
+
+  it('tracks a crawler on each root crawler file, with its status', async () => {
+    for (const path of ['/robots.txt', '/llms.txt', '/llms-full.txt', '/sitemap.xml'])
+      expect(await statuses('GPTBot/1.2', path, 404)).toEqual([404]);
+  });
+
+  it('ignores a human on /robots.txt', async () => {
+    expect(await statuses('Mozilla/5.0 Chrome/140', '/robots.txt', 200)).toEqual([]);
+  });
+
+  it('ignores a crawler on /favicon.ico', async () => {
+    expect(await statuses('GPTBot/1.2', '/favicon.ico', 200)).toEqual([]);
+  });
+});

@@ -1,7 +1,9 @@
 import { type ClientConfig, createClient } from './core';
 import {
+  isCrawlerFilePath,
   isTrackableMethod,
   isTrackableStatus,
+  looksLikeBot,
   shouldTrackPath,
 } from './matchers';
 import { extractForwardedSignals } from './signals';
@@ -62,7 +64,8 @@ export interface EdgeConfig extends ClientConfig {
    * true to count something the defaults skip — e.g. a POST that renders a page
    * someone actually reads. The method is passed so you can still turn away
    * HEAD prefetch probes, which look exactly like a real page otherwise.
-   * Status and content-type gating still apply on top of this.
+   * Status and content-type gating still apply on top of this, except for
+   * crawler requests, which are recorded with any status and content type.
    */
   shouldTrack?: (pathname: string, request: { method: string }) => boolean;
 }
@@ -88,19 +91,22 @@ export function trackEdge(
       return; // malformed url, skip
     }
 
+    const get = (n: string) => request.headers.get(n);
+    const userAgent = get('user-agent') ?? undefined;
+    const bot = looksLikeBot(userAgent, get);
+
     // A custom shouldTrack owns the path + method call entirely, so a consumer
     // can count something the defaults skip.
     const method = request.method ?? 'GET';
     const tracked = config.shouldTrack
       ? config.shouldTrack(pathname, { method })
-      : shouldTrackPath(pathname) && isTrackableMethod(method);
+      : (shouldTrackPath(pathname) || (bot && isCrawlerFilePath(pathname))) &&
+        isTrackableMethod(method, bot);
+    if (!tracked) return;
 
-    if (
-      !tracked ||
-      !isTrackableStatus(response.status) ||
-      !isHtmlResponse(response)
-    )
-      return;
+    // A crawler is recorded whatever it was served (403s, 404s, non-HTML).
+    const page = isTrackableStatus(response.status) && isHtmlResponse(response);
+    if (!page && !bot) return;
 
     // Workers use ctx.waitUntil for fire-and-forget; keepalive off.
     const client = createClient({ ...config, keepalive: false });
@@ -111,15 +117,18 @@ export function trackEdge(
 
     ctx.waitUntil(
       client.pageView({
+        // The URL as the client sent it, which a request signature covers.
         url: request.url,
         path: pathname,
-        referrer: request.headers.get('referer') ?? undefined,
-        userAgent: request.headers.get('user-agent') ?? undefined,
-        ip: request.headers.get('cf-connecting-ip') ?? undefined,
-        // A tracked HTML page reaching here is a document navigation.
-        signals: extractForwardedSignals((n) => request.headers.get(n), {
+        referrer: get('referer') ?? undefined,
+        userAgent,
+        ip: get('cf-connecting-ip') ?? undefined,
+        status: response.status,
+        // A tracked 2xx HTML page is a document navigation.
+        signals: extractForwardedSignals(get, {
           httpVersion,
-          isBrowserNav: true,
+          isBrowserNav: page,
+          method,
         }),
         properties: cacheStatus ? { cache_status: cacheStatus } : undefined,
       }),

@@ -1,5 +1,5 @@
 import { type AnalyticsClient, type PageViewInput, createClient } from './core';
-import { domainOrigin } from './origin';
+import { clientOrigin, domainOrigin } from './origin';
 import { extractForwardedSignals } from './signals';
 
 // Next.js App Router integration. A page_view fires only when a real page
@@ -10,7 +10,9 @@ import { extractForwardedSignals } from './signals';
 
 // Minimal structural type; avoids a hard runtime dependency on `next`.
 interface NextRequestLike {
-  nextUrl: { pathname: string; search: string };
+  method?: string;
+  /** `href` keeps any basePath, which `pathname` drops. */
+  nextUrl: { pathname: string; search: string; href?: string };
   headers: Headers;
 }
 
@@ -25,6 +27,20 @@ interface HeadersLike {
 /** Request header the middleware sets and <TrackPageView/> reads to learn its path. */
 export const PINGAURA_PATH_HEADER = 'x-pa-path';
 
+// Request method and raw path + query, read only for a signed request.
+const METHOD_HEADER = 'x-pa-method';
+const RAW_PATH_HEADER = 'x-pa-raw-path';
+
+function rawPath(href: string | undefined): string | undefined {
+  if (!href) return undefined;
+  try {
+    const u = new URL(href);
+    return u.pathname + u.search;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Clone the request headers with the current path recorded, so a server-rendered
  * `<TrackPageView/>` can read it (Next doesn't expose the pathname to Server
@@ -35,6 +51,11 @@ export const PINGAURA_PATH_HEADER = 'x-pa-path';
 export function pingauraRequestHeaders(req: NextRequestLike): Headers {
   const headers = new Headers(req.headers);
   headers.set(PINGAURA_PATH_HEADER, req.nextUrl.pathname + req.nextUrl.search);
+  const raw = rawPath(req.nextUrl.href);
+  if (raw) headers.set(RAW_PATH_HEADER, raw);
+  else headers.delete(RAW_PATH_HEADER);
+  if (req.method) headers.set(METHOD_HEADER, req.method);
+  else headers.delete(METHOD_HEADER);
   return headers;
 }
 
@@ -79,6 +100,12 @@ export function buildPageViewFromHeaders(
     const proto = headers.get('x-forwarded-proto') ?? 'https';
     url = host ? `${proto}://${host}${rel}` : rel;
   }
+  // A signature covers the host and path the client sent, so keep both.
+  if (headers.get('signature')?.trim()) {
+    const signed = clientOrigin((n) => headers.get(n));
+    const raw = headers.get(RAW_PATH_HEADER);
+    if (signed) url = `${signed}${raw?.startsWith('/') ? raw : rel}`;
+  }
 
   const xff = headers.get('x-forwarded-for') ?? '';
   const ip = xff.split(',')[0]?.trim() || undefined;
@@ -92,6 +119,7 @@ export function buildPageViewFromHeaders(
     // Reaching here means a real page rendered → a document navigation.
     signals: extractForwardedSignals((n) => headers.get(n), {
       isBrowserNav: true,
+      method: headers.get(METHOD_HEADER) ?? undefined,
     }),
   };
 }

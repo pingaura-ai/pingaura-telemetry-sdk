@@ -446,4 +446,25 @@ describe('keepalive opt-out + pageView properties', () => {
     ).events[0]!;
     expect(ev.properties).toEqual({ cache_status: 'hit' });
   });
+
+  it('pageView sends the url as given and the response status', async () => {
+    const { fn, calls } = fakeFetch();
+    const client = createClient({
+      writeKey: 'pa_k_s',
+      endpoint: 'https://in.test/v1/events',
+      domain: 'example.com',
+      fetchImpl: fn as never,
+    });
+    await client.pageView({
+      url: 'https://www.x.com/Docs/A%20B?x=1',
+      status: 404,
+    });
+    const ev = (
+      JSON.parse(String(calls[0]!.init.body)) as {
+        events: { context: Record<string, unknown> }[];
+      }
+    ).events[0]!;
+    expect(ev.context.url).toBe('https://www.x.com/Docs/A%20B?x=1');
+    expect(ev.context.status).toBe(404);
+  });
 });
