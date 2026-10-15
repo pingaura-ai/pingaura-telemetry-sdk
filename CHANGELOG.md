@@ -2,6 +2,9 @@
 
 Newest first. [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-10-15
+- Next.js page views now send `status: 200`, so crawler requests to rendered pages report a status.
+
 ## [0.4.0] - 2026-10-15
 - Node and Cloudflare now send the response status and record AI crawler requests (and any request with a `Signature` header) with any status or content type, GET or HEAD, plus crawler fetches of `/robots.txt`, `/llms.txt`, `/llms-full.txt` and `/sitemap.xml`. Next.js sends no status. HTTP message signature headers are forwarded for verification, never stored, and a signed request keeps the host and path the client used.
 

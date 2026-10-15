@@ -86,6 +86,14 @@ describe('buildPageViewFromHeaders', () => {
     expect(data!.url).toBe('http://localhost:3000/blog/a');
     expect(data!.path).toBe('/blog/a');
   });
+
+  it('sends status 200, since reaching the component means the page rendered', () => {
+    const data = buildPageViewFromHeaders(
+      mk({ [PINGAURA_PATH_HEADER]: '/pricing' }),
+      { domain: 'example.com' },
+    );
+    expect(data!.status).toBe(200);
+  });
 });
 
 describe('TrackPageView', () => {

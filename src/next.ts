@@ -116,6 +116,8 @@ export function buildPageViewFromHeaders(
     referrer: headers.get('referer') ?? undefined,
     userAgent: headers.get('user-agent') ?? undefined,
     ip,
+    // A rendered page is a 200; requests that end in an error never get here.
+    status: 200,
     // Reaching here means a real page rendered → a document navigation.
     signals: extractForwardedSignals((n) => headers.get(n), {
       isBrowserNav: true,
