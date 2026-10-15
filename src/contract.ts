@@ -19,6 +19,8 @@ export interface EventContext {
   screen?: string;
   user_agent?: string;
   country?: string;
+  /** HTTP status of the response the event describes (server adapters). */
+  status?: number;
 }
 
 /**
@@ -36,6 +38,20 @@ export interface ForwardedSignals {
   accept?: string;
   http_version?: string;
   is_browser_nav?: boolean;
+  web_bot_auth?: WebBotAuthSignals;
+}
+
+/**
+ * HTTP message signature headers (RFC 9421), as used by Web Bot Auth, sent
+ * only when the request carries a `Signature` header. They are used only
+ * to verify the signature and are not stored. `method` is the request
+ * method, needed when the signature covers `@method`.
+ */
+export interface WebBotAuthSignals {
+  signature?: string;
+  signature_input?: string;
+  signature_agent?: string;
+  method?: string;
 }
 
 export interface AnalyticsEvent {

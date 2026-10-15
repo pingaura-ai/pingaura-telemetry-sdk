@@ -35,6 +35,8 @@ export interface PageViewInput {
   locale?: string;
   userAgent?: string;
   ip?: string;
+  /** HTTP status of the response being recorded. */
+  status?: number;
   /** Bot-detection signals from the visitor's request (server adapters). */
   signals?: ForwardedSignals;
   properties?: Record<string, unknown>;
@@ -179,6 +181,7 @@ export function createClient(config: ClientConfig): AnalyticsClient {
             title: input.title,
             locale: input.locale,
             user_agent: input.userAgent,
+            status: input.status,
           },
           signals: input.signals,
           properties: input.properties,

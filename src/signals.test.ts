@@ -53,4 +53,45 @@ describe('extractForwardedSignals', () => {
       extractForwardedSignals(getterFrom({}), { isBrowserNav: true }).is_browser_nav,
     ).toBe(true);
   });
+
+  it('forwards the message signature headers and the method', () => {
+    const s = extractForwardedSignals(
+      getterFrom({
+        signature: 'sig1=:AA==:',
+        'signature-input': 'sig1=("@authority")',
+        'signature-agent': '"https://chatgpt.com"',
+      }),
+      { method: 'HEAD' },
+    );
+    expect(s.web_bot_auth).toEqual({
+      signature: 'sig1=:AA==:',
+      signature_input: 'sig1=("@authority")',
+      signature_agent: '"https://chatgpt.com"',
+      method: 'HEAD',
+    });
+  });
+
+  it('omits web_bot_auth when there is no Signature header', () => {
+    const s = extractForwardedSignals(
+      getterFrom({ 'signature-input': 'sig1=("@authority")' }),
+      { method: 'GET' },
+    );
+    expect(s.web_bot_auth).toBeUndefined();
+  });
+
+  it('caps the signature headers at 2048 characters and the method at 10', () => {
+    const long = 'x'.repeat(3000);
+    const s = extractForwardedSignals(
+      getterFrom({
+        signature: long,
+        'signature-input': long,
+        'signature-agent': long,
+      }),
+      { method: 'M'.repeat(20) },
+    );
+    expect(s.web_bot_auth!.signature!.length).toBe(2048);
+    expect(s.web_bot_auth!.signature_input!.length).toBe(2048);
+    expect(s.web_bot_auth!.signature_agent!.length).toBe(2048);
+    expect(s.web_bot_auth!.method!.length).toBe(10);
+  });
 });

@@ -9,6 +9,8 @@ const CAP_SEC_CH_UA = 256;
 const CAP_ACCEPT_LANGUAGE = 64;
 const CAP_ACCEPT = 256;
 const CAP_HTTP_VERSION = 16;
+const CAP_SIGNATURE = 2048;
+const CAP_METHOD = 10;
 
 function clip(v: string | null | undefined, max: number): string | undefined {
   if (v == null) return undefined;
@@ -22,6 +24,8 @@ export interface ExtractSignalsOptions {
   httpVersion?: string | null;
   /** True when this is a real document navigation (from the page-view path). */
   isBrowserNav?: boolean;
+  /** Request method, forwarded with the signature headers. */
+  method?: string;
 }
 
 /**
@@ -55,6 +59,18 @@ export function extractForwardedSignals(
   if (httpVersion) s.http_version = httpVersion;
 
   if (opts.isBrowserNav) s.is_browser_nav = true;
+
+  // Signature headers are only useful together, so they are sent as one block.
+  const signature = clip(get('signature'), CAP_SIGNATURE);
+  if (signature) {
+    s.web_bot_auth = { signature };
+    const input = clip(get('signature-input'), CAP_SIGNATURE);
+    if (input) s.web_bot_auth.signature_input = input;
+    const agent = clip(get('signature-agent'), CAP_SIGNATURE);
+    if (agent) s.web_bot_auth.signature_agent = agent;
+    const method = clip(opts.method, CAP_METHOD);
+    if (method) s.web_bot_auth.method = method;
+  }
 
   return s;
 }

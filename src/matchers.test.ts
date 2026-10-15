@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 
-import { isTrackableMethod, shouldTrackPath } from './matchers';
+import {
+  isCrawlerFilePath,
+  isTrackableMethod,
+  looksLikeBot,
+  shouldTrackPath,
+} from './matchers';
 
 describe('shouldTrackPath', () => {
   it('skips _next, api, and static assets; tracks real pages', () => {
@@ -27,5 +32,63 @@ describe('isTrackableMethod', () => {
   });
   it('assumes GET when the caller supplies no method', () => {
     expect(isTrackableMethod(undefined)).toBe(true);
+  });
+});
+
+describe('isTrackableMethod for crawlers', () => {
+  it('also allows HEAD, but nothing else', () => {
+    expect(isTrackableMethod('GET', true)).toBe(true);
+    expect(isTrackableMethod('head', true)).toBe(true);
+    expect(isTrackableMethod('POST', true)).toBe(false);
+    expect(isTrackableMethod(undefined, true)).toBe(true);
+  });
+});
+
+describe('looksLikeBot', () => {
+  const none = () => null;
+
+  it('matches known AI crawler tokens, case-insensitively', () => {
+    expect(looksLikeBot('Mozilla/5.0 (compatible; GPTBot/1.2)', none)).toBe(
+      true,
+    );
+    expect(looksLikeBot('mozilla/5.0 claudebot/1.0', none)).toBe(true);
+    expect(
+      looksLikeBot('Mozilla/5.0 (compatible; PerplexityBot/1.0)', none),
+    ).toBe(true);
+    expect(looksLikeBot('meta-externalagent/1.1', none)).toBe(true);
+  });
+
+  it('is false for an ordinary browser', () => {
+    expect(looksLikeBot('Mozilla/5.0 Chrome/140 Safari/537.36', none)).toBe(
+      false,
+    );
+    expect(looksLikeBot(undefined, none)).toBe(false);
+  });
+
+  it('is true for any request carrying a Signature header', () => {
+    const get = (n: string) => (n === 'signature' ? 'sig1=:AA==:' : null);
+    expect(looksLikeBot('Mozilla/5.0 Chrome/140', get)).toBe(true);
+  });
+
+  it('ignores a blank Signature header', () => {
+    const get = (n: string) => (n === 'signature' ? '  ' : null);
+    expect(looksLikeBot('Mozilla/5.0 Chrome/140', get)).toBe(false);
+  });
+});
+
+describe('isCrawlerFilePath', () => {
+  it('matches the root crawler files exactly', () => {
+    for (const p of [
+      '/robots.txt',
+      '/llms.txt',
+      '/llms-full.txt',
+      '/sitemap.xml',
+    ])
+      expect(isCrawlerFilePath(p)).toBe(true);
+  });
+  it('rejects other files and nested copies', () => {
+    expect(isCrawlerFilePath('/favicon.ico')).toBe(false);
+    expect(isCrawlerFilePath('/blog/robots.txt')).toBe(false);
+    expect(isCrawlerFilePath('/sitemap-0.xml')).toBe(false);
   });
 });

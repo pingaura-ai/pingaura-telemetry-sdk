@@ -1,10 +1,12 @@
 import { type AnalyticsClient, type ClientConfig, createClient } from './core';
 import {
+  isCrawlerFilePath,
   isTrackableMethod,
   isTrackableStatus,
+  looksLikeBot,
   shouldTrackPath,
 } from './matchers';
-import { applyOrigin, domainOrigin } from './origin';
+import { applyOrigin, clientOrigin, domainOrigin } from './origin';
 import { extractForwardedSignals } from './signals';
 
 type HeaderBag = Record<string, string | string[] | undefined>;
@@ -25,6 +27,10 @@ export interface CaptureInput {
   domain?: string;
   /** Negotiated HTTP version of the visitor's request (e.g. Express `req.httpVersion`). */
   httpVersion?: string;
+  /** HTTP status of the response (e.g. Express `res.statusCode`). */
+  status?: number;
+  /** Request method, forwarded with any request signature headers. */
+  method?: string;
 }
 
 /** Framework-agnostic page_view capture from a request-like object. */
@@ -32,36 +38,49 @@ export async function capturePageView(
   client: AnalyticsClient,
   input: CaptureInput,
 ): Promise<void> {
-  const xff = header(input.headers, 'x-forwarded-for') ?? '';
+  const get = (n: string) => header(input.headers, n);
+  const xff = get('x-forwarded-for') ?? '';
   const ip = xff.split(',')[0]?.trim() || undefined;
   const origin = domainOrigin(input.domain);
   let url = input.url;
   let path: string;
+  let target: string; // path + query as requested
+  let proto: string | undefined;
   try {
-    path = new URL(input.url).pathname;
+    const u = new URL(input.url);
+    path = u.pathname;
+    target = u.pathname + u.search;
+    proto = u.protocol.replace(/:$/, '');
     // absolute url, but the host may be the bind address, so prefer the origin
     if (origin) url = applyOrigin(input.url, origin);
   } catch {
     // bare path (e.g. "/pricing"); rebuild an absolute URL, else the collector rejects the batch
     path = input.url.split('?')[0] ?? '/';
-    const host = header(input.headers, 'host');
+    target = input.url;
+    const host = get('host');
     const base =
       origin ??
-      (host
-        ? `${header(input.headers, 'x-forwarded-proto') ?? 'https'}://${host}`
-        : undefined);
+      (host ? `${get('x-forwarded-proto') ?? 'https'}://${host}` : undefined);
     if (base) url = `${base}${input.url}`;
+  }
+  // A signature covers the host the client addressed, so keep that host.
+  if (get('signature')?.trim()) {
+    const signed = clientOrigin(get, proto);
+    if (signed) url = `${signed}${target}`;
   }
   await client.pageView({
     url,
     path,
-    referrer: header(input.headers, 'referer'),
-    userAgent: header(input.headers, 'user-agent'),
+    referrer: get('referer'),
+    userAgent: get('user-agent'),
     ip,
-    // A tracked page path reaching here IS a document navigation → is_browser_nav.
-    signals: extractForwardedSignals((n) => header(input.headers, n), {
+    status: input.status,
+    // A tracked page path that rendered (2xx, or status unknown) is a document navigation.
+    signals: extractForwardedSignals(get, {
       httpVersion: input.httpVersion,
-      isBrowserNav: true,
+      isBrowserNav:
+        input.status === undefined || isTrackableStatus(input.status),
+      method: input.method,
     }),
   });
 }
@@ -86,7 +105,8 @@ export interface NodeMiddlewareConfig extends ClientConfig {
    * true to count something the defaults skip — e.g. a POST that renders a page
    * someone actually reads. The method is passed so you can still turn away
    * HEAD probes, which Express answers from the matching GET route.
-   * Status gating still applies on top of this.
+   * Status gating still applies on top of this, except for crawler requests,
+   * which are recorded with any status.
    */
   shouldTrack?: (pathname: string, request: { method: string }) => boolean;
 }
@@ -103,9 +123,13 @@ export function analyticsMiddleware(
       // A custom shouldTrack owns the path + method call entirely, so a consumer
       // can count something the defaults skip.
       const method = req.method ?? 'GET';
+      const bot = looksLikeBot(header(req.headers, 'user-agent'), (n) =>
+        header(req.headers, n),
+      );
       const tracked = config.shouldTrack
         ? config.shouldTrack(pathname, { method })
-        : shouldTrackPath(pathname) && isTrackableMethod(method);
+        : (shouldTrackPath(pathname) || (bot && isCrawlerFilePath(pathname))) &&
+          isTrackableMethod(method, bot);
 
       if (tracked) {
         const host = req.get('host') ?? 'localhost';
@@ -113,16 +137,18 @@ export function analyticsMiddleware(
         const headers = req.headers;
         const httpVersion = req.httpVersion;
         // Wait for the response to finish so we can gate on status:
-        // non-2xx (scanner 404s, etc.) must not count.
+        // non-2xx (scanner 404s, etc.) must not count, unless a crawler got it.
         res.on('finish', () => {
           try {
-            if (!isTrackableStatus(res.statusCode)) return;
+            if (!bot && !isTrackableStatus(res.statusCode)) return;
             // fire-and-forget; swallow send errors, never surface to the request
             void capturePageView(client, {
               headers,
               url,
               domain: config.domain,
               httpVersion,
+              status: res.statusCode,
+              method,
             }).catch(() => {});
           } catch {
             // never break the response
