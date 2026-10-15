@@ -287,7 +287,7 @@ and `text/html` on Cloudflare).
 
 Every server-side page view now carries the response status as
 `context.status`. The Next.js adapter only sees pages that render, so it sends
-no status and does not record crawler requests that end in an error.
+200 for those and still does not record crawler requests that end in an error.
 
 Browser tracking is unaffected: the generic client sends no signals block.
 
